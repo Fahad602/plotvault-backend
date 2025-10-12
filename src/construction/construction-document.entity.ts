@@ -81,7 +81,7 @@ export class ConstructionDocument {
   @Column({ nullable: true })
   approvedBy: string;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   approvedAt: Date;
 
   @Column({ nullable: true })

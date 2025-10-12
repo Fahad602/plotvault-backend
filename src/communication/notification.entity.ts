@@ -102,16 +102,16 @@ export class Notification {
   @Column({ nullable: true })
   actionUrl: string; // URL to navigate to when notification is clicked
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   scheduledFor: Date; // When to send the notification (for scheduled notifications)
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   sentAt: Date; // When the notification was actually sent
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   readAt: Date; // When the notification was read
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   expiresAt: Date; // When the notification expires
 
   @Column({ default: false })

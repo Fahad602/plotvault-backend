@@ -123,7 +123,7 @@ export class Document {
   @Column({ nullable: true })
   reviewedBy: string;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   reviewedAt: Date;
 
   @Column({ nullable: true })
