@@ -26,11 +26,13 @@ import { AnalyticsModule } from './analytics/analytics.module';
       envFilePath: '.env',
     }),
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: process.env.DATABASE_URL || 'queen-hills.db',
+      type: process.env.DATABASE_URL?.startsWith('postgresql') ? 'postgresql' : 'sqlite',
+      url: process.env.DATABASE_URL,
+      database: process.env.DATABASE_URL?.startsWith('postgresql') ? undefined : (process.env.DATABASE_URL || 'queen-hills.db'),
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
+      ssl: process.env.NODE_ENV === 'production' && process.env.DATABASE_URL?.startsWith('postgresql') ? { rejectUnauthorized: false } : false,
     }),
     ThrottlerModule.forRoot([
       {
