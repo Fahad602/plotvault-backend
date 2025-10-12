@@ -27,13 +27,14 @@ import { AnalyticsModule } from './analytics/analytics.module';
       envFilePath: '.env',
     }),
     TypeOrmModule.forRoot({
-      type: process.env.DATABASE_URL?.startsWith('postgresql') ? 'postgres' : 'sqlite',
+      type: 'postgres',
       url: process.env.DATABASE_URL,
-      database: process.env.DATABASE_URL?.startsWith('postgresql') ? undefined : (process.env.DATABASE_URL || 'queen-hills.db'),
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
-      ssl: process.env.NODE_ENV === 'production' && process.env.DATABASE_URL?.startsWith('postgresql') ? { rejectUnauthorized: false } : false,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
+      migrationsRun: process.env.NODE_ENV === 'production',
     } as TypeOrmModuleOptions),
     ThrottlerModule.forRoot([
       {
