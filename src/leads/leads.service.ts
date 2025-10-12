@@ -177,7 +177,7 @@ export class LeadsService {
     const leadsWithParsedTags = leads.map(lead => ({
       ...lead,
       tags: lead.tags ? this.parseTags(lead.tags) : [],
-    }));
+    } as Lead & { tags: string[] }));
 
     return {
       data: leadsWithParsedTags,
@@ -258,7 +258,7 @@ export class LeadsService {
     return {
       ...lead,
       tags: lead.tags ? this.parseTags(lead.tags) : [],
-    };
+    } as Lead & { tags: string[] };
   }
 
   async updateLead(id: string, updateLeadDto: UpdateLeadDto): Promise<Lead> {
