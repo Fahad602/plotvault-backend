@@ -95,6 +95,19 @@ export class LeadsService {
     private userRepository: Repository<User>,
   ) {}
 
+  private parseTags(tagsString: string): string[] {
+    if (!tagsString) return [];
+    
+    try {
+      // Try to parse as JSON first
+      const parsed = JSON.parse(tagsString);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      // If JSON parsing fails, treat as comma-separated string
+      return tagsString.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+    }
+  }
+
   async createLead(createLeadDto: CreateLeadDto): Promise<Lead> {
     // Validate that at least email or phone is provided
     if (!createLeadDto.email && !createLeadDto.phone) {
@@ -163,7 +176,7 @@ export class LeadsService {
     // Parse tags for each lead
     const leadsWithParsedTags = leads.map(lead => ({
       ...lead,
-      tags: lead.tags ? JSON.parse(lead.tags) : [],
+      tags: lead.tags ? this.parseTags(lead.tags) : [],
     }));
 
     return {
@@ -244,7 +257,7 @@ export class LeadsService {
 
     return {
       ...lead,
-      tags: lead.tags ? JSON.parse(lead.tags) : [],
+      tags: lead.tags ? this.parseTags(lead.tags) : [],
     };
   }
 
