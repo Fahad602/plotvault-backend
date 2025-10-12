@@ -17,6 +17,9 @@ export class HealthController {
         message: 'Queen Hills API is running',
         database: 'connected',
         databaseType: this.dataSource.options.type,
+        nodeEnv: process.env.NODE_ENV,
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 20) + '...',
       };
     } catch (error) {
       return {
@@ -25,6 +28,9 @@ export class HealthController {
         message: 'Database connection failed',
         database: 'disconnected',
         error: error.message,
+        nodeEnv: process.env.NODE_ENV,
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 20) + '...',
       };
     }
   }

@@ -24,7 +24,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: process.env.NODE_ENV === 'development' ? '.env' : undefined,
     }),
     TypeOrmModule.forRoot({
       type: 'postgres',
