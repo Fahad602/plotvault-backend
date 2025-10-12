@@ -26,7 +26,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
       envFilePath: '.env',
     }),
     TypeOrmModule.forRoot({
-      type: process.env.DATABASE_URL?.startsWith('postgresql') ? 'postgresql' : 'sqlite',
+      type: process.env.DATABASE_URL?.startsWith('postgresql') ? 'postgres' : 'sqlite',
       url: process.env.DATABASE_URL,
       database: process.env.DATABASE_URL?.startsWith('postgresql') ? undefined : (process.env.DATABASE_URL || 'queen-hills.db'),
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
