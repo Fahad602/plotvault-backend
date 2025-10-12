@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { PlotsModule } from './plots/plots.module';
@@ -33,7 +34,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
       synchronize: process.env.NODE_ENV !== 'production',
       logging: process.env.NODE_ENV === 'development',
       ssl: process.env.NODE_ENV === 'production' && process.env.DATABASE_URL?.startsWith('postgresql') ? { rejectUnauthorized: false } : false,
-    }),
+    } as TypeOrmModuleOptions),
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
