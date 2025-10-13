@@ -5,6 +5,7 @@ import { Plot } from '../plots/plot.entity';
 import { Booking } from '../bookings/booking.entity';
 import { Payment } from '../finance/payment.entity';
 import { PaymentSchedule } from '../finance/payment-schedule.entity';
+import { Installment } from '../finance/installment.entity';
 import { ConstructionProject } from '../construction/construction-project.entity';
 import { Document } from '../documents/document.entity';
 import { Notification } from '../communication/notification.entity';
@@ -20,6 +21,7 @@ import { AnalyticsController } from './analytics.controller';
       Booking,
       Payment,
       PaymentSchedule,
+      Installment,
       ConstructionProject,
       Document,
       Notification,

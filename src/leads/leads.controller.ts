@@ -13,6 +13,7 @@ import {
   DefaultValuePipe 
 } from '@nestjs/common';
 import { LeadsService, CreateLeadDto, UpdateLeadDto, CreateCommunicationDto, CreateNoteDto, LeadFilters } from './leads.service';
+import { LeadWorkflowService } from './lead-workflow.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -24,7 +25,10 @@ import { LeadStatus, LeadSource, LeadPriority } from './lead.entity';
 @Controller('leads')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class LeadsController {
-  constructor(private readonly leadsService: LeadsService) {}
+  constructor(
+    private readonly leadsService: LeadsService,
+    private readonly leadWorkflowService: LeadWorkflowService,
+  ) {}
 
   @Post()
   @RequirePermissions(Permission.CREATE_LEADS)
@@ -197,5 +201,20 @@ export class LeadsController {
     @GetUser() user: User,
   ) {
     return await this.leadsService.getLeadNotes(leadId, user.id);
+  }
+
+  // Workflow endpoints
+  @Post('workflow/process')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async processWorkflow(@GetUser() user: User) {
+    console.log('Manual workflow processing triggered by:', user.fullName);
+    await this.leadWorkflowService.processWorkflowAutomation();
+    return { message: 'Workflow automation completed successfully' };
+  }
+
+  @Get('workflow/stats')
+  @RequirePermissions(Permission.VIEW_LEAD_ANALYTICS)
+  async getWorkflowStats(@GetUser() user: User) {
+    return await this.leadWorkflowService.getWorkflowStats();
   }
 }

@@ -19,6 +19,7 @@ import { DocumentModule } from './documents/document.module';
 import { CommunicationModule } from './communication/communication.module';
 import { LeadsModule } from './leads/leads.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { TasksModule } from './tasks/tasks.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     CommunicationModule,
     LeadsModule,
     AnalyticsModule,
+    TasksModule,
   ],
 })
 export class AppModule {} 

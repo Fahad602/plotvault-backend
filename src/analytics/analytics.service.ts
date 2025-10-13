@@ -6,6 +6,7 @@ import { Plot, PlotStatus } from '../plots/plot.entity';
 import { Booking, BookingStatus } from '../bookings/booking.entity';
 import { Payment, PaymentStatus } from '../finance/payment.entity';
 import { PaymentSchedule } from '../finance/payment-schedule.entity';
+import { Installment } from '../finance/installment.entity';
 import { ConstructionProject, ConstructionStatus } from '../construction/construction-project.entity';
 import { Document } from '../documents/document.entity';
 import { Notification } from '../communication/notification.entity';
@@ -24,6 +25,8 @@ export class AnalyticsService {
     private paymentRepository: Repository<Payment>,
     @InjectRepository(PaymentSchedule)
     private paymentScheduleRepository: Repository<PaymentSchedule>,
+    @InjectRepository(Installment)
+    private installmentRepository: Repository<Installment>,
     @InjectRepository(ConstructionProject)
     private projectRepository: Repository<ConstructionProject>,
     @InjectRepository(Document)
@@ -237,11 +240,12 @@ export class AnalyticsService {
   }
 
   private async getOverduePayments(): Promise<number> {
-    const result = await this.paymentRepository
-      .createQueryBuilder('payment')
-      .select('SUM(payment.amount)', 'total')
-      .where('payment.dueDate < :now', { now: new Date() })
-      .andWhere('payment.status = :status', { status: PaymentStatus.PENDING })
+    // Get overdue payments from installments
+    const result = await this.installmentRepository
+      .createQueryBuilder('installment')
+      .select('SUM(installment.amount)', 'total')
+      .where('installment.dueDate < :now', { now: new Date() })
+      .andWhere('installment.status = :status', { status: 'pending' })
       .getRawOne();
     return parseFloat(result.total) || 0;
   }
@@ -291,10 +295,10 @@ export class AnalyticsService {
   private async getMonthlySales(): Promise<Array<{ month: string; amount: number; count: number }>> {
     const result = await this.bookingRepository
       .createQueryBuilder('booking')
-      .select('strftime("%Y-%m", booking.createdAt)', 'month')
+      .select('TO_CHAR(booking.createdAt, \'YYYY-MM\')', 'month')
       .addSelect('SUM(booking.totalAmount)', 'amount')
       .addSelect('COUNT(*)', 'count')
-      .groupBy('strftime("%Y-%m", booking.createdAt)')
+      .groupBy('TO_CHAR(booking.createdAt, \'YYYY-MM\')')
       .orderBy('month', 'DESC')
       .limit(12)
       .getRawMany();
@@ -381,9 +385,9 @@ export class AnalyticsService {
   private async getSalesTrend(): Promise<Array<{ date: string; amount: number }>> {
     const result = await this.bookingRepository
       .createQueryBuilder('booking')
-      .select('strftime("%Y-%m-%d", booking.createdAt)', 'date')
+      .select('TO_CHAR(booking.createdAt, \'YYYY-MM-DD\')', 'date')
       .addSelect('SUM(booking.totalAmount)', 'amount')
-      .groupBy('strftime("%Y-%m-%d", booking.createdAt)')
+      .groupBy('TO_CHAR(booking.createdAt, \'YYYY-MM-DD\')')
       .orderBy('date', 'DESC')
       .limit(30)
       .getRawMany();
