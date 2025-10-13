@@ -70,74 +70,81 @@ export class LeadsImportService {
         const rowNumber = i + 1;
 
         try {
+          // Skip test/dummy data rows
+          if (this.isTestData(row)) {
+            console.log(`⏭️ Skipping test data row ${rowNumber}`);
+            continue;
+          }
+
+          // Parse Facebook/Instagram lead data
+          const parsedLead = this.parseFacebookLead(row);
+          if (!parsedLead) {
+            result.errors.push(`Row ${rowNumber}: Invalid lead data format`);
+            result.failedImports++;
+            continue;
+          }
+
           // Validate required fields
-          if (!row.fullName || (!row.email && !row.phone)) {
+          if (!parsedLead.fullName || (!parsedLead.email && !parsedLead.phone)) {
             result.errors.push(`Row ${rowNumber}: Missing required fields (fullName and either email or phone)`);
             result.failedImports++;
             continue;
           }
 
           // Validate email format if provided
-          if (row.email && !this.isValidEmail(row.email)) {
-            result.errors.push(`Row ${rowNumber}: Invalid email format - ${row.email}`);
+          if (parsedLead.email && !this.isValidEmail(parsedLead.email)) {
+            result.errors.push(`Row ${rowNumber}: Invalid email format - ${parsedLead.email}`);
             result.failedImports++;
             continue;
           }
 
           // Validate phone format if provided
-          if (row.phone && !this.isValidPhone(row.phone)) {
-            result.errors.push(`Row ${rowNumber}: Invalid phone format - ${row.phone}`);
+          if (parsedLead.phone && !this.isValidPhone(parsedLead.phone)) {
+            result.errors.push(`Row ${rowNumber}: Invalid phone format - ${parsedLead.phone}`);
             result.failedImports++;
             continue;
           }
 
           // Check for duplicate email
-          if (row.email) {
+          if (parsedLead.email) {
             const existingLead = await this.leadRepository.findOne({
-              where: { email: row.email }
+              where: { email: parsedLead.email }
             });
             if (existingLead) {
-              result.errors.push(`Row ${rowNumber}: Lead with email ${row.email} already exists`);
+              result.errors.push(`Row ${rowNumber}: Lead with email ${parsedLead.email} already exists`);
               result.failedImports++;
               continue;
             }
           }
 
           // Check for duplicate phone
-          if (row.phone) {
+          if (parsedLead.phone) {
             const existingLead = await this.leadRepository.findOne({
-              where: { phone: row.phone }
+              where: { phone: parsedLead.phone }
             });
             if (existingLead) {
-              result.errors.push(`Row ${rowNumber}: Lead with phone ${row.phone} already exists`);
+              result.errors.push(`Row ${rowNumber}: Lead with phone ${parsedLead.phone} already exists`);
               result.failedImports++;
               continue;
             }
           }
 
-          // Map source
-          const source = this.mapSource(row.source);
-          if (!source) {
-            result.errors.push(`Row ${rowNumber}: Invalid source - ${row.source}`);
-            result.failedImports++;
-            continue;
-          }
-
           // Create lead
           const lead = this.leadRepository.create({
-            fullName: row.fullName.trim(),
-            email: row.email ? row.email.trim().toLowerCase() : null,
-            phone: row.phone ? row.phone.trim() : null,
-            source: source,
-            sourceDetails: row.sourceDetails ? row.sourceDetails.trim() : null,
+            fullName: parsedLead.fullName.trim(),
+            email: parsedLead.email ? parsedLead.email.trim().toLowerCase() : null,
+            phone: parsedLead.phone ? parsedLead.phone.trim() : null,
+            source: parsedLead.source,
+            sourceDetails: parsedLead.sourceDetails,
             status: LeadStatus.NEW,
-            priority: this.mapPriority(row.budgetRange),
-            initialNotes: row.initialNotes ? row.initialNotes.trim() : null,
-            interests: row.interests ? row.interests.trim() : null,
-            budgetRange: row.budgetRange ? parseFloat(row.budgetRange) : null,
-            preferredContactMethod: row.preferredContactMethod ? row.preferredContactMethod.trim() : null,
-            preferredContactTime: row.preferredContactTime ? row.preferredContactTime.trim() : null,
+            priority: parsedLead.priority,
+            initialNotes: parsedLead.initialNotes,
+            interests: parsedLead.interests,
+            budgetRange: parsedLead.budgetRange,
+            preferredContactMethod: parsedLead.preferredContactMethod,
+            preferredContactTime: parsedLead.preferredContactTime,
             generatedByUserId: importedBy,
+            createdAt: parsedLead.createdAt,
           });
 
           // Auto-assign to sales agent
@@ -181,9 +188,105 @@ export class LeadsImportService {
   }
 
   private isValidPhone(phone: string): boolean {
-    // Pakistani phone number format: +92-XXX-XXXXXXX
-    const phoneRegex = /^\+92-\d{3}-\d{7}$/;
-    return phoneRegex.test(phone);
+    // Accept various phone formats: +92-XXX-XXXXXXX, +92XXXXXXXXX, 03XXXXXXXXX
+    const phoneRegex = /^(\+92-?\d{3}-?\d{7}|03\d{9}|\+92\d{10})$/;
+    return phoneRegex.test(phone.replace(/\s/g, ''));
+  }
+
+  private isTestData(row: any): boolean {
+    // Check if this is test/dummy data
+    const fullName = row.full_name || row.fullName || '';
+    const phone = row.phone_number || row.phone || '';
+    const email = row.email || '';
+    
+    return fullName.includes('<test lead:') || 
+           phone.includes('<test lead:') || 
+           email.includes('test@fb.com') ||
+           fullName.includes('dummy data');
+  }
+
+  private parseFacebookLead(row: any): any {
+    try {
+      // Extract phone number from Facebook format (p:+923005678901)
+      let phone = row.phone_number || row.phone || '';
+      if (phone.startsWith('p:')) {
+        phone = phone.substring(2);
+      }
+      
+      // Clean phone number
+      phone = phone.replace(/[^\d+]/g, '');
+      if (phone.startsWith('92') && !phone.startsWith('+92')) {
+        phone = '+' + phone;
+      } else if (phone.startsWith('03')) {
+        phone = '+92' + phone.substring(1);
+      }
+
+      // Extract full name
+      const fullName = row.full_name || row.fullName || '';
+      
+      // Extract email
+      const email = row.email || '';
+      
+      // Extract city
+      const city = row.city || '';
+      
+      // Determine source based on platform
+      let source = LeadSource.OTHER;
+      if (row.platform === 'fb') {
+        source = LeadSource.FACEBOOK_ADS;
+      } else if (row.platform === 'ig') {
+        source = LeadSource.INSTAGRAM_ADS;
+      } else if (row.is_organic === 'true') {
+        source = LeadSource.WEBSITE;
+      }
+
+      // Create source details
+      const sourceDetails = {
+        campaignName: row.campaign_name || '',
+        adName: row.ad_name || '',
+        adsetName: row.adset_name || '',
+        formName: row.form_name || '',
+        platform: row.platform || '',
+        isOrganic: row.is_organic === 'true'
+      };
+
+      // Determine priority based on campaign type
+      let priority = LeadPriority.MEDIUM;
+      if (row.ad_name && row.ad_name.toLowerCase().includes('reel')) {
+        priority = LeadPriority.HIGH; // Reel ads typically get higher engagement
+      }
+
+      // Parse created time
+      let createdAt = new Date();
+      if (row.created_time) {
+        try {
+          createdAt = new Date(row.created_time);
+        } catch (e) {
+          console.warn('Invalid date format:', row.created_time);
+        }
+      }
+
+      // Create initial notes
+      const initialNotes = `Imported from ${row.platform?.toUpperCase() || 'Facebook'} campaign: ${row.campaign_name || 'Unknown'}. Lead source: ${row.form_name || 'Form'}. City: ${city}`;
+
+      return {
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone,
+        source,
+        sourceDetails: JSON.stringify(sourceDetails),
+        priority,
+        initialNotes,
+        interests: `Real estate investment in Murree`,
+        budgetRange: null, // Not available in Facebook leads
+        preferredContactMethod: 'phone', // Default for Facebook leads
+        preferredContactTime: 'evening', // Default
+        createdAt
+      };
+    } catch (error) {
+      console.error('Error parsing Facebook lead:', error);
+      return null;
+    }
   }
 
   private mapSource(source: string): LeadSource | null {
@@ -215,9 +318,95 @@ export class LeadsImportService {
   private selectSalesAgent(salesAgents: User[], lead: Lead): User | null {
     if (salesAgents.length === 0) return null;
 
-    // Simple round-robin assignment based on current workload
-    // In a real system, this could be more sophisticated
-    const sortedAgents = salesAgents.sort((a, b) => a.workloadScore - b.workloadScore);
-    return sortedAgents[0];
+    // Advanced workload-based assignment algorithm
+    const agentsWithWorkload = salesAgents.map(agent => ({
+      agent,
+      workloadScore: agent.workloadScore || 0,
+      // Add bonus for agents with lower workload
+      assignmentScore: (agent.workloadScore || 0) * 0.7 + Math.random() * 0.3
+    }));
+
+    // Sort by assignment score (lower is better)
+    agentsWithWorkload.sort((a, b) => a.assignmentScore - b.assignmentScore);
+    
+    return agentsWithWorkload[0].agent;
+  }
+
+  async getImportPreview(csvBuffer: Buffer): Promise<any> {
+    const preview = {
+      totalRows: 0,
+      validRows: 0,
+      invalidRows: 0,
+      testRows: 0,
+      sampleData: [],
+      errors: []
+    };
+
+    try {
+      const leads: any[] = [];
+      const stream = Readable.from(csvBuffer.toString());
+
+      await new Promise((resolve, reject) => {
+        stream
+          .pipe(csv())
+          .on('data', (row) => {
+            leads.push(row);
+            preview.totalRows++;
+          })
+          .on('end', resolve)
+          .on('error', reject);
+      });
+
+      // Process first 10 rows for preview
+      for (let i = 0; i < Math.min(leads.length, 10); i++) {
+        const row = leads[i];
+        
+        if (this.isTestData(row)) {
+          preview.testRows++;
+          continue;
+        }
+
+        const parsedLead = this.parseFacebookLead(row);
+        if (parsedLead) {
+          preview.validRows++;
+          preview.sampleData.push({
+            rowNumber: i + 1,
+            fullName: parsedLead.fullName,
+            email: parsedLead.email,
+            phone: parsedLead.phone,
+            source: parsedLead.source,
+            priority: parsedLead.priority,
+            city: row.city || 'N/A'
+          });
+        } else {
+          preview.invalidRows++;
+          preview.errors.push(`Row ${i + 1}: Invalid data format`);
+        }
+      }
+
+    } catch (error) {
+      preview.errors.push(`Preview failed: ${error.message}`);
+    }
+
+    return preview;
+  }
+
+  async getSalesAgents(): Promise<any[]> {
+    const salesAgents = await this.userRepository.find({
+      where: { 
+        role: UserRole.SALES_PERSON,
+        isActive: true 
+      },
+      select: ['id', 'fullName', 'email', 'workloadScore'],
+      order: { workloadScore: 'ASC' }
+    });
+
+    return salesAgents.map(agent => ({
+      id: agent.id,
+      fullName: agent.fullName,
+      email: agent.email,
+      workloadScore: agent.workloadScore || 0,
+      currentLeads: 0 // This could be calculated from actual lead count
+    }));
   }
 }

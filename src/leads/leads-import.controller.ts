@@ -1,6 +1,7 @@
 import { 
   Controller, 
   Post, 
+  Get,
   UseInterceptors, 
   UploadedFile, 
   UseGuards, 
@@ -140,6 +141,71 @@ export class LeadsImportController {
 
       throw new HttpException(
         `Validation failed: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Post('preview')
+  @RequirePermissions(Permission.CREATE_LEADS)
+  @UseInterceptors(FileInterceptor('file', multerConfig))
+  async previewCSV(
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    try {
+      // Validate file
+      if (!file) {
+        throw new BadRequestException('No file uploaded');
+      }
+
+      if (!file.originalname.endsWith('.csv')) {
+        throw new BadRequestException('Only CSV files are allowed');
+      }
+
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        throw new BadRequestException('File size too large. Maximum 5MB allowed');
+      }
+
+      console.log(`📁 Previewing CSV file: ${file.originalname} (${file.size} bytes)`);
+
+      // Get preview
+      const preview = await this.leadsImportService.getImportPreview(file.buffer);
+
+      return {
+        success: true,
+        message: 'CSV preview generated successfully',
+        data: preview
+      };
+
+    } catch (error) {
+      console.error('❌ CSV preview error:', error);
+      
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new HttpException(
+        `Preview failed: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Get('sales-agents')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async getSalesAgents() {
+    try {
+      const salesAgents = await this.leadsImportService.getSalesAgents();
+      
+      return {
+        success: true,
+        message: 'Sales agents retrieved successfully',
+        data: salesAgents
+      };
+    } catch (error) {
+      console.error('❌ Get sales agents error:', error);
+      throw new HttpException(
+        `Failed to get sales agents: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
