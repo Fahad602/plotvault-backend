@@ -46,6 +46,10 @@ export class LeadsImportController {
 
       console.log(`📁 Processing CSV file: ${file.originalname} (${file.size} bytes)`);
 
+      if (!file.buffer) {
+        throw new BadRequestException('File buffer is empty');
+      }
+
       // Import leads
       const result = await this.leadsImportService.importLeadsFromCSV(
         file.buffer,
@@ -107,6 +111,9 @@ export class LeadsImportController {
       }
 
       // Basic validation without importing
+      if (!file.buffer) {
+        throw new BadRequestException('File buffer is empty');
+      }
       const csvContent = file.buffer.toString('utf-8');
       const lines = csvContent.split('\n').filter(line => line.trim());
       
@@ -115,11 +122,18 @@ export class LeadsImportController {
       }
 
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      const requiredHeaders = ['fullname', 'email', 'phone', 'source'];
-      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-
-      if (missingHeaders.length > 0) {
-        throw new BadRequestException(`Missing required headers: ${missingHeaders.join(', ')}`);
+      
+      // Check for Facebook/Instagram lead format
+      const facebookHeaders = ['full_name', 'phone_number', 'email'];
+      const facebookHeadersPresent = facebookHeaders.filter(h => headers.includes(h));
+      
+      // Check for standard format
+      const standardHeaders = ['fullname', 'phone', 'email'];
+      const standardHeadersPresent = standardHeaders.filter(h => headers.includes(h));
+      
+      // Accept either Facebook format or standard format
+      if (facebookHeadersPresent.length < 2 && standardHeadersPresent.length < 2) {
+        throw new BadRequestException(`Missing required headers. Expected either Facebook format (full_name, phone_number, email) or standard format (fullname, phone, email)`);
       }
 
       return {
@@ -167,6 +181,10 @@ export class LeadsImportController {
       }
 
       console.log(`📁 Previewing CSV file: ${file.originalname} (${file.size} bytes)`);
+
+      if (!file.buffer) {
+        throw new BadRequestException('File buffer is empty');
+      }
 
       // Get preview
       const preview = await this.leadsImportService.getImportPreview(file.buffer);

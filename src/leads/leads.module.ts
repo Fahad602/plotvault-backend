@@ -11,9 +11,9 @@ import { LeadsImportController } from './leads-import.controller';
 import { LeadsImportService } from './leads-import.service';
 import { LeadWorkflowService } from './lead-workflow.service';
 import { Customer } from '../customers/customer.entity';
-import { User } from '../users/user.entity';
 import { SalesActivity } from '../users/sales-activity.entity';
 import { Notification } from '../communication/notification.entity';
+import { User } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
 
 @Module({
@@ -23,9 +23,9 @@ import { UsersModule } from '../users/users.module';
       LeadCommunication,
       LeadNote,
       Customer,
-      User,
       SalesActivity,
       Notification,
+      User,
     ]),
     UsersModule,
   ],

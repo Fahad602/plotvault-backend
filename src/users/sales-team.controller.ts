@@ -33,6 +33,15 @@ export class SalesTeamController {
     return await this.salesTeamService.getTeamMembers(req.user.userId);
   }
 
+  @Get('members/:memberId')
+  @RequirePermissions(Permission.MANAGE_TEAM_MEMBERS)
+  async getTeamMemberDetails(
+    @Request() req,
+    @Param('memberId') memberId: string
+  ) {
+    return await this.salesTeamService.getTeamMemberDetails(req.user.userId, memberId);
+  }
+
   @Post('members')
   @RequirePermissions(Permission.MANAGE_TEAM_MEMBERS)
   async createTeamMember(
@@ -96,5 +105,17 @@ export class SalesTeamController {
       filters.startDate, 
       filters.endDate
     );
+  }
+
+  @Get('manager-stats')
+  @RequirePermissions(Permission.VIEW_TEAM_ACTIVITIES)
+  async getManagerStats(@Request() req) {
+    return await this.salesTeamService.getManagerStats(req.user.userId);
+  }
+
+  @Get('agent-stats')
+  @RequirePermissions(Permission.VIEW_SALES_ANALYTICS)
+  async getAgentStats(@Request() req) {
+    return await this.salesTeamService.getAgentStats(req.user.userId);
   }
 }

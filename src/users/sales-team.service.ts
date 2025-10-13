@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { User, UserRole } from './user.entity';
 import { Lead, LeadStatus } from '../leads/lead.entity';
 import { Booking, BookingStatus } from '../bookings/booking.entity';
 import { SalesActivity } from './sales-activity.entity';
 import { CreateTeamMemberDto, UpdateTeamMemberDto, AssignLeadDto } from './dto/sales-team.dto';
+import { LiveWorkloadService } from './live-workload.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class SalesTeamService {
@@ -18,13 +20,15 @@ export class SalesTeamService {
     private bookingRepository: Repository<Booking>,
     @InjectRepository(SalesActivity)
     private salesActivityRepository: Repository<SalesActivity>,
+    private liveWorkloadService: LiveWorkloadService,
   ) {}
 
   /**
    * Get all team members managed by a sales manager
    */
-  async getTeamMembers(managerId: string): Promise<User[]> {
-    return await this.userRepository.find({
+  async getTeamMembers(managerId: string): Promise<any[]> {
+    // Get team members without workload score
+    const teamMembers = await this.userRepository.find({
       where: { 
         assignedToUserId: managerId,
         role: UserRole.SALES_PERSON,
@@ -32,10 +36,23 @@ export class SalesTeamService {
       },
       select: [
         'id', 'fullName', 'email', 'phone', 'department', 
-        'employeeId', 'workloadScore', 'createdAt', 'isActive'
+        'employeeId', 'createdAt', 'isActive'
       ],
       order: { fullName: 'ASC' }
     });
+
+    // Get live workload data for each team member
+    const membersWithLiveWorkload = await Promise.all(
+      teamMembers.map(async (member) => {
+        const workloadData = await this.liveWorkloadService.getAgentWorkload(member.id);
+        return {
+          ...member,
+          workloadScore: workloadData.workloadScore
+        };
+      })
+    );
+
+    return membersWithLiveWorkload;
   }
 
   /**
@@ -64,16 +81,144 @@ export class SalesTeamService {
       throw new BadRequestException('User with this email already exists');
     }
 
+    // Hash the password
+    const passwordHash = await bcrypt.hash(createDto.password, 10);
+
     const teamMember = this.userRepository.create({
-      ...createDto,
+      fullName: createDto.fullName,
+      email: createDto.email,
+      passwordHash,
       role: UserRole.SALES_PERSON,
       assignedToUserId: managerId,
       department: createDto.department || 'Sales',
+      employeeId: createDto.employeeId,
+      phone: createDto.phone,
+      address: createDto.address,
       workloadScore: 0,
       isActive: true
     });
 
     return await this.userRepository.save(teamMember);
+  }
+
+  /**
+   * Get detailed information about a specific team member
+   */
+  async getTeamMemberDetails(managerId: string, memberId: string): Promise<any> {
+    // Verify the team member belongs to this manager
+    const teamMember = await this.userRepository.findOne({
+      where: { 
+        id: memberId,
+        assignedToUserId: managerId,
+        role: UserRole.SALES_PERSON
+      },
+      select: [
+        'id', 'fullName', 'email', 'phone', 'department', 
+        'employeeId', 'address', 'createdAt', 'isActive'
+      ]
+    });
+
+    if (!teamMember) {
+      throw new NotFoundException('Team member not found');
+    }
+
+    // Get live workload data
+    const workloadData = await this.liveWorkloadService.getAgentWorkload(memberId);
+
+    // Get performance metrics
+    const [
+      totalLeads,
+      convertedLeads,
+      activeLeads,
+      lostLeads,
+      notInterestedLeads,
+      totalBookings,
+      totalRevenue,
+      activitiesCount,
+      recentActivities,
+      recentSales
+    ] = await Promise.all([
+      // Total leads
+      this.leadRepository.count({ where: { assignedToUserId: memberId } }),
+      // Converted leads
+      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.CONVERTED } }),
+      // Active leads (excluding converted, lost, not_interested)
+      this.leadRepository.count({ 
+        where: { 
+          assignedToUserId: memberId,
+          status: Not(In([LeadStatus.CONVERTED, LeadStatus.LOST, LeadStatus.NOT_INTERESTED]))
+        }
+      }),
+      // Lost leads
+      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.LOST } }),
+      // Not interested leads
+      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.NOT_INTERESTED } }),
+      // Total bookings
+      this.bookingRepository.count({ where: { createdById: memberId } }),
+      // Total revenue
+      this.bookingRepository
+        .createQueryBuilder('booking')
+        .select('SUM(booking.totalAmount)', 'total')
+        .where('booking.createdById = :memberId', { memberId })
+        .andWhere('booking.status = :status', { status: BookingStatus.CONFIRMED })
+        .getRawOne(),
+      // Activities count
+      this.salesActivityRepository.count({ where: { userId: memberId } }),
+      // Recent activities (last 10)
+      this.salesActivityRepository.find({
+        where: { userId: memberId },
+        order: { createdAt: 'DESC' },
+        take: 10
+      }),
+      // Recent sales/bookings (last 10)
+      this.bookingRepository.find({
+        where: { createdById: memberId },
+        order: { createdAt: 'DESC' },
+        take: 10,
+        relations: ['customer', 'plot']
+      })
+    ]);
+
+    const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+    const averageDealSize = totalBookings > 0 ? (parseFloat(totalRevenue.total) || 0) / totalBookings : 0;
+
+    return {
+      ...teamMember,
+      workloadScore: workloadData.workloadScore,
+      performance: {
+        totalLeads,
+        convertedLeads,
+        activeLeads,
+        lostLeads,
+        notInterestedLeads,
+        conversionRate: Math.round(conversionRate * 10) / 10,
+        totalBookings,
+        totalRevenue: parseFloat(totalRevenue.total) || 0,
+        averageDealSize: Math.round(averageDealSize),
+        activitiesCount
+      },
+      recentActivities: recentActivities.map(activity => ({
+        id: activity.id,
+        type: activity.activityType,
+        description: activity.description,
+        createdAt: activity.createdAt,
+        entityId: activity.entityId,
+        entityType: activity.entityType,
+        isSuccessful: activity.isSuccessful,
+        potentialValue: activity.potentialValue
+      })),
+      recentSales: recentSales.map(booking => ({
+        id: booking.id,
+        bookingNumber: `BK-${booking.id.slice(-8).toUpperCase()}`,
+        customerName: booking.customer?.fullName || 'Unknown Customer',
+        customerId: booking.customerId,
+        totalAmount: booking.totalAmount,
+        status: booking.status,
+        createdAt: booking.createdAt,
+        plotNumber: booking.plot?.plotNumber || 'N/A',
+        plotSize: booking.plot?.sizeMarla ? `${booking.plot.sizeMarla} Marla` : 'N/A'
+      }))
+    };
   }
 
   /**
@@ -124,20 +269,29 @@ export class SalesTeamService {
    * Get team member workload for lead assignment
    */
   async getTeamWorkload(managerId: string): Promise<{ userId: string; fullName: string; workloadScore: number }[]> {
+    // Get team members
     const teamMembers = await this.userRepository.find({
       where: { 
         assignedToUserId: managerId,
         role: UserRole.SALES_PERSON,
         isActive: true
       },
-      select: ['id', 'fullName', 'workloadScore']
+      select: ['id', 'fullName']
     });
 
-    return teamMembers.map(member => ({
-      userId: member.id,
-      fullName: member.fullName,
-      workloadScore: member.workloadScore
-    }));
+    // Get live workload data for each team member
+    const workloads = await Promise.all(
+      teamMembers.map(async (member) => {
+        const workload = await this.liveWorkloadService.getAgentWorkload(member.id);
+        return {
+          userId: member.id,
+          fullName: member.fullName,
+          workloadScore: workload.workloadScore
+        };
+      })
+    );
+
+    return workloads;
   }
 
   /**
@@ -154,15 +308,8 @@ export class SalesTeamService {
    * Get next available team member for lead assignment
    */
   async getNextAvailableTeamMember(managerId: string): Promise<string | null> {
-    const teamMembers = await this.getTeamWorkload(managerId);
-    
-    if (teamMembers.length === 0) {
-      return null;
-    }
-
-    // Sort by workload score (ascending) and return the one with lowest workload
-    const sortedMembers = teamMembers.sort((a, b) => a.workloadScore - b.workloadScore);
-    return sortedMembers[0].userId;
+    // Use live workload service to get the next available agent
+    return await this.liveWorkloadService.getNextAvailableAgent();
   }
 
   /**
@@ -229,12 +376,15 @@ export class SalesTeamService {
         const conversionRate = leadsCount > 0 ? (convertedLeads / leadsCount) * 100 : 0;
         const averageDealSize = bookingsCount > 0 ? (parseFloat(totalSales.total) || 0) / bookingsCount : 0;
 
+        // Get live workload data
+        const workloadData = await this.liveWorkloadService.getAgentWorkload(member.id);
+
         return {
           id: member.id,
           name: member.fullName,
           email: member.email,
           role: 'Sales Agent',
-          workloadScore: member.workloadScore,
+          workloadScore: workloadData.workloadScore,
           totalLeads: leadsCount,
           convertedLeads,
           conversionRate,
@@ -270,6 +420,174 @@ export class SalesTeamService {
       monthlyTarget: 500000,
       monthlyProgress: (totalRevenue / 500000) * 100,
       members: performanceData
+    };
+  }
+
+  /**
+   * Get manager dashboard stats with actual revenue from confirmed bookings
+   */
+  async getManagerStats(managerId: string): Promise<any> {
+    const teamMembers = await this.getTeamMembers(managerId);
+    const teamMemberIds = teamMembers.map(member => member.id);
+    
+    if (teamMemberIds.length === 0) {
+      return {
+        totalLeads: 0,
+        convertedLeads: 0,
+        totalCustomers: 0,
+        totalBookings: 0,
+        totalRevenue: 0,
+        pendingFollowUps: 0,
+        callsMade: 0,
+        emailsSent: 0,
+        meetingsScheduled: 0,
+        conversionRate: 0,
+      };
+    }
+
+    // Get actual stats from database
+    const [
+      totalLeads,
+      convertedLeads,
+      totalCustomers,
+      totalBookings,
+      totalRevenue,
+      activitiesStats
+    ] = await Promise.all([
+      // Total leads assigned to team members
+      this.leadRepository.count({
+        where: { assignedToUserId: In(teamMemberIds) }
+      }),
+      // Converted leads
+      this.leadRepository.count({
+        where: { 
+          assignedToUserId: In(teamMemberIds),
+          status: LeadStatus.CONVERTED 
+        }
+      }),
+      // Total customers created by team members
+      this.bookingRepository
+        .createQueryBuilder('booking')
+        .leftJoin('booking.customer', 'customer')
+        .where('booking.createdById IN (:...memberIds)', { memberIds: teamMemberIds })
+        .select('COUNT(DISTINCT customer.id)', 'count')
+        .getRawOne(),
+      // Total bookings created by team members
+      this.bookingRepository.count({
+        where: { createdById: In(teamMemberIds) }
+      }),
+      // Total revenue from confirmed bookings
+      this.bookingRepository
+        .createQueryBuilder('booking')
+        .select('SUM(booking.totalAmount)', 'total')
+        .where('booking.createdById IN (:...memberIds)', { memberIds: teamMemberIds })
+        .andWhere('booking.status = :status', { status: BookingStatus.CONFIRMED })
+        .getRawOne(),
+      // Activities stats
+      this.salesActivityRepository
+        .createQueryBuilder('activity')
+        .where('activity.userId IN (:...memberIds)', { memberIds: teamMemberIds })
+        .select([
+          'COUNT(CASE WHEN activity.activityType = :callMade THEN 1 END) as callsMade',
+          'COUNT(CASE WHEN activity.activityType = :emailSent THEN 1 END) as emailsSent',
+          'COUNT(CASE WHEN activity.activityType = :meetingScheduled THEN 1 END) as meetingsScheduled'
+        ])
+        .setParameters({
+          callMade: 'call_made',
+          emailSent: 'email_sent',
+          meetingScheduled: 'meeting_scheduled'
+        })
+        .getRawOne()
+    ]);
+
+    const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+
+    return {
+      totalLeads,
+      convertedLeads,
+      totalCustomers: parseInt(totalCustomers.count) || 0,
+      totalBookings,
+      totalRevenue: parseFloat(totalRevenue.total) || 0,
+      pendingFollowUps: 0, // This would need a separate calculation
+      callsMade: parseInt(activitiesStats.callsMade) || 0,
+      emailsSent: parseInt(activitiesStats.emailsSent) || 0,
+      meetingsScheduled: parseInt(activitiesStats.meetingsScheduled) || 0,
+      conversionRate: Math.round(conversionRate * 10) / 10,
+    };
+  }
+
+  /**
+   * Get sales agent dashboard stats with actual data from leads and bookings
+   */
+  async getAgentStats(agentId: string): Promise<any> {
+    // Get actual stats from database for this specific agent
+    const [
+      totalLeads,
+      convertedLeads,
+      totalCustomers,
+      totalBookings,
+      totalRevenue,
+      activitiesStats
+    ] = await Promise.all([
+      // Total leads assigned to this agent
+      this.leadRepository.count({
+        where: { assignedToUserId: agentId }
+      }),
+      // Converted leads
+      this.leadRepository.count({
+        where: { 
+          assignedToUserId: agentId,
+          status: LeadStatus.CONVERTED 
+        }
+      }),
+      // Total customers created by this agent
+      this.bookingRepository
+        .createQueryBuilder('booking')
+        .leftJoin('booking.customer', 'customer')
+        .where('booking.createdById = :agentId', { agentId })
+        .select('COUNT(DISTINCT customer.id)', 'count')
+        .getRawOne(),
+      // Total bookings created by this agent
+      this.bookingRepository.count({
+        where: { createdById: agentId }
+      }),
+      // Total revenue from confirmed bookings
+      this.bookingRepository
+        .createQueryBuilder('booking')
+        .select('SUM(booking.totalAmount)', 'total')
+        .where('booking.createdById = :agentId', { agentId })
+        .andWhere('booking.status = :status', { status: BookingStatus.CONFIRMED })
+        .getRawOne(),
+      // Activities stats
+      this.salesActivityRepository
+        .createQueryBuilder('activity')
+        .where('activity.userId = :agentId', { agentId })
+        .select([
+          'COUNT(CASE WHEN activity.activityType = :callMade THEN 1 END) as callsMade',
+          'COUNT(CASE WHEN activity.activityType = :emailSent THEN 1 END) as emailsSent',
+          'COUNT(CASE WHEN activity.activityType = :meetingScheduled THEN 1 END) as meetingsScheduled'
+        ])
+        .setParameters({
+          callMade: 'call_made',
+          emailSent: 'email_sent',
+          meetingScheduled: 'meeting_scheduled'
+        })
+        .getRawOne()
+    ]);
+
+    const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+
+    return {
+      totalLeads,
+      convertedLeads,
+      totalCustomers: parseInt(totalCustomers.count) || 0,
+      totalBookings,
+      totalRevenue: parseFloat(totalRevenue.total) || 0,
+      pendingFollowUps: 0, // This would need a separate calculation
+      callsMade: parseInt(activitiesStats.callsMade) || 0,
+      emailsSent: parseInt(activitiesStats.emailsSent) || 0,
+      meetingsScheduled: parseInt(activitiesStats.meetingsScheduled) || 0,
+      conversionRate: Math.round(conversionRate * 10) / 10,
     };
   }
 }

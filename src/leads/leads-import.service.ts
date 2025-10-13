@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Lead, LeadSource, LeadStatus, LeadPriority } from './lead.entity';
 import { User, UserRole } from '../users/user.entity';
 import { LeadAutomationService } from './lead-automation.service';
+import { LiveWorkloadService } from '../users/live-workload.service';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
 
@@ -23,6 +24,7 @@ export class LeadsImportService {
     @InjectRepository(User)
     private userRepository: Repository<User>,
     private leadAutomationService: LeadAutomationService,
+    private liveWorkloadService: LiveWorkloadService,
   ) {}
 
   async importLeadsFromCSV(csvBuffer: Buffer, importedBy: string): Promise<LeadImportResult> {
@@ -148,14 +150,9 @@ export class LeadsImportService {
           });
 
           // Auto-assign to sales agent
-          const assignedAgent = this.selectSalesAgent(salesAgents, lead);
+          const assignedAgent = await this.selectSalesAgent(salesAgents, lead);
           if (assignedAgent) {
             lead.assignedToUserId = assignedAgent.id;
-            
-            // Update agent workload
-            await this.userRepository.update(assignedAgent.id, {
-              workloadScore: assignedAgent.workloadScore + 1
-            });
           }
 
           // Save lead
@@ -242,12 +239,18 @@ export class LeadsImportService {
 
       // Create source details
       const sourceDetails = {
+        campaignId: row.campaign_id || '',
         campaignName: row.campaign_name || '',
+        adId: row.ad_id || '',
         adName: row.ad_name || '',
+        adsetId: row.adset_id || '',
         adsetName: row.adset_name || '',
+        formId: row.form_id || '',
         formName: row.form_name || '',
         platform: row.platform || '',
-        isOrganic: row.is_organic === 'true'
+        isOrganic: row.is_organic === 'true',
+        leadId: row.id || '',
+        leadStatus: row.lead_status || ''
       };
 
       // Determine priority based on campaign type
@@ -256,18 +259,12 @@ export class LeadsImportService {
         priority = LeadPriority.HIGH; // Reel ads typically get higher engagement
       }
 
-      // Parse created time
-      let createdAt = new Date();
-      if (row.created_time) {
-        try {
-          createdAt = new Date(row.created_time);
-        } catch (e) {
-          console.warn('Invalid date format:', row.created_time);
-        }
-      }
+      // Use current time for imported leads (ignore CSV dates)
+      // This ensures leads are treated as newly imported regardless of CSV timestamps
+      const createdAt = new Date();
 
       // Create initial notes
-      const initialNotes = `Imported from ${row.platform?.toUpperCase() || 'Facebook'} campaign: ${row.campaign_name || 'Unknown'}. Lead source: ${row.form_name || 'Form'}. City: ${city}`;
+      const initialNotes = `Imported from ${row.platform?.toUpperCase() || 'Facebook'} campaign: ${row.campaign_name || 'Unknown'} (ID: ${row.campaign_id || 'N/A'}). Ad: ${row.ad_name || 'N/A'} (ID: ${row.ad_id || 'N/A'}). Form: ${row.form_name || 'Form'} (ID: ${row.form_id || 'N/A'}). City: ${city}. Organic: ${row.is_organic === 'true' ? 'Yes' : 'No'}`;
 
       return {
         fullName: fullName.trim(),
@@ -315,16 +312,21 @@ export class LeadsImportService {
     return LeadPriority.LOW;
   }
 
-  private selectSalesAgent(salesAgents: User[], lead: Lead): User | null {
+  private async selectSalesAgent(salesAgents: User[], lead: Lead): Promise<User | null> {
     if (salesAgents.length === 0) return null;
 
-    // Advanced workload-based assignment algorithm
-    const agentsWithWorkload = salesAgents.map(agent => ({
-      agent,
-      workloadScore: agent.workloadScore || 0,
-      // Add bonus for agents with lower workload
-      assignmentScore: (agent.workloadScore || 0) * 0.7 + Math.random() * 0.3
-    }));
+    // Get live workload data for all agents
+    const agentsWithWorkload = await Promise.all(
+      salesAgents.map(async (agent) => {
+        const workloadData = await this.liveWorkloadService.getAgentWorkload(agent.id);
+        return {
+          agent,
+          workloadScore: workloadData.workloadScore,
+          // Add bonus for agents with lower workload
+          assignmentScore: workloadData.workloadScore * 0.7 + Math.random() * 0.3
+        };
+      })
+    );
 
     // Sort by assignment score (lower is better)
     agentsWithWorkload.sort((a, b) => a.assignmentScore - b.assignmentScore);
@@ -343,31 +345,60 @@ export class LeadsImportService {
     };
 
     try {
+      console.log('📊 Starting CSV preview with buffer size:', csvBuffer?.length || 'undefined');
+      
+      if (!csvBuffer) {
+        preview.errors.push('No CSV buffer provided');
+        return preview;
+      }
+
       const leads: any[] = [];
-      const stream = Readable.from(csvBuffer.toString());
+      const csvString = csvBuffer.toString('utf-8');
+      console.log('📊 CSV string length:', csvString.length);
+      console.log('📊 First 200 chars:', csvString.substring(0, 200));
+      
+      const stream = Readable.from(csvString);
 
       await new Promise((resolve, reject) => {
         stream
           .pipe(csv())
           .on('data', (row) => {
+            console.log('📊 Parsed row:', Object.keys(row));
             leads.push(row);
             preview.totalRows++;
           })
-          .on('end', resolve)
-          .on('error', reject);
+          .on('end', () => {
+            console.log('📊 CSV parsing completed, total rows:', preview.totalRows);
+            resolve(undefined);
+          })
+          .on('error', (error) => {
+            console.error('📊 CSV parsing error:', error);
+            reject(error);
+          });
       });
+
+      console.log('📊 Processing first 10 rows for preview...');
 
       // Process first 10 rows for preview
       for (let i = 0; i < Math.min(leads.length, 10); i++) {
         const row = leads[i];
+        console.log(`📊 Processing row ${i + 1}:`, {
+          full_name: row.full_name,
+          phone_number: row.phone_number,
+          email: row.email,
+          platform: row.platform,
+          is_organic: row.is_organic
+        });
         
         if (this.isTestData(row)) {
+          console.log(`📊 Row ${i + 1} is test data, skipping`);
           preview.testRows++;
           continue;
         }
 
         const parsedLead = this.parseFacebookLead(row);
         if (parsedLead) {
+          console.log(`📊 Row ${i + 1} parsed successfully:`, parsedLead.fullName);
           preview.validRows++;
           preview.sampleData.push({
             rowNumber: i + 1,
@@ -379,15 +410,18 @@ export class LeadsImportService {
             city: row.city || 'N/A'
           });
         } else {
+          console.log(`📊 Row ${i + 1} failed to parse`);
           preview.invalidRows++;
           preview.errors.push(`Row ${i + 1}: Invalid data format`);
         }
       }
 
     } catch (error) {
+      console.error('📊 Preview error:', error);
       preview.errors.push(`Preview failed: ${error.message}`);
     }
 
+    console.log('📊 Preview result:', preview);
     return preview;
   }
 
@@ -397,16 +431,24 @@ export class LeadsImportService {
         role: UserRole.SALES_PERSON,
         isActive: true 
       },
-      select: ['id', 'fullName', 'email', 'workloadScore'],
-      order: { workloadScore: 'ASC' }
+      select: ['id', 'fullName', 'email']
     });
 
-    return salesAgents.map(agent => ({
-      id: agent.id,
-      fullName: agent.fullName,
-      email: agent.email,
-      workloadScore: agent.workloadScore || 0,
-      currentLeads: 0 // This could be calculated from actual lead count
-    }));
+    // Get live workload data for each agent
+    const agentsWithWorkload = await Promise.all(
+      salesAgents.map(async (agent) => {
+        const workloadData = await this.liveWorkloadService.getAgentWorkload(agent.id);
+        return {
+          id: agent.id,
+          fullName: agent.fullName,
+          email: agent.email,
+          workloadScore: workloadData.workloadScore,
+          currentLeads: workloadData.activeLeads
+        };
+      })
+    );
+
+    // Sort by workload score (ascending)
+    return agentsWithWorkload.sort((a, b) => a.workloadScore - b.workloadScore);
   }
 }

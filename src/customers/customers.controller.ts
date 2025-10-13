@@ -1,25 +1,43 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query, Request } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../customers/customer.entity';
+import { Lead } from '../leads/lead.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { Permission } from '../auth/permissions.guard';
 
 @Controller('customers')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CustomersController {
   constructor(
     @InjectRepository(Customer)
     private customerRepository: Repository<Customer>,
+    @InjectRepository(Lead)
+    private leadRepository: Repository<Lead>,
   ) {}
 
   @Get()
+  @RequirePermissions(Permission.VIEW_CUSTOMERS)
   async getAllCustomers(
+    @Request() req,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     console.log('Fetching all customers');
     const queryBuilder = this.customerRepository.createQueryBuilder('customer');
+
+    // Apply role-based filtering
+    if (req.user.role === 'sales_person') {
+      console.log('Sales person filtering: showing only customers from converted leads');
+      // Sales agents can only see customers converted from their leads
+      queryBuilder
+        .leftJoin('customer.convertedFromLeads', 'lead')
+        .andWhere('lead.assignedToUserId = :userId', { userId: req.user.userId });
+    }
+    // Sales managers and admins can see all customers (no additional filtering)
 
     if (search) {
       queryBuilder.andWhere(
@@ -66,10 +84,22 @@ export class CustomersController {
   }
 
   @Get(':id')
-  async getCustomerById(@Param('id') id: string) {
+  @RequirePermissions(Permission.VIEW_CUSTOMERS)
+  async getCustomerById(@Request() req, @Param('id') id: string) {
     console.log('Fetching customer with ID:', id);
     
-    const customer = await this.customerRepository.findOne({ where: { id } });
+    const queryBuilder = this.customerRepository.createQueryBuilder('customer')
+      .where('customer.id = :id', { id });
+
+    // Apply role-based filtering
+    if (req.user.role === 'sales_person') {
+      console.log('Sales person filtering: checking if customer is from their converted leads');
+      queryBuilder
+        .leftJoin('customer.convertedFromLeads', 'lead')
+        .andWhere('lead.assignedToUserId = :userId', { userId: req.user.userId });
+    }
+    
+    const customer = await queryBuilder.getOne();
     console.log('Customer found:', customer);
     
     if (!customer) {
@@ -109,17 +139,25 @@ export class CustomersController {
   }
 
   @Get(':id/bookings')
-  async getCustomerBookings(@Param('id') id: string) {
+  @RequirePermissions(Permission.VIEW_CUSTOMERS)
+  async getCustomerBookings(@Request() req, @Param('id') id: string) {
     try {
-      const customer = await this.customerRepository.findOne({
-        where: { id },
-        relations: [
-          'bookings',
-          'bookings.plot',
-          'bookings.paymentSchedules',
-          'bookings.createdBy'
-        ],
-      });
+      const queryBuilder = this.customerRepository.createQueryBuilder('customer')
+        .leftJoinAndSelect('customer.bookings', 'booking')
+        .leftJoinAndSelect('booking.plot', 'plot')
+        .leftJoinAndSelect('booking.paymentSchedules', 'paymentSchedule')
+        .leftJoinAndSelect('booking.createdBy', 'createdBy')
+        .where('customer.id = :id', { id });
+
+      // Apply role-based filtering
+      if (req.user.role === 'sales_person') {
+        console.log('Sales person filtering: checking if customer is from their converted leads');
+        queryBuilder
+          .leftJoin('customer.convertedFromLeads', 'lead')
+          .andWhere('lead.assignedToUserId = :userId', { userId: req.user.userId });
+      }
+
+      const customer = await queryBuilder.getOne();
 
       if (!customer) {
         return { error: 'Customer not found' };

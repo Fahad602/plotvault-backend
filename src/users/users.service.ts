@@ -1,7 +1,8 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not, In } from 'typeorm';
 import { User, UserRole } from './user.entity';
+import { LiveWorkloadService } from './live-workload.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private liveWorkloadService: LiveWorkloadService,
   ) {}
 
   async createUser(userData: {
@@ -154,12 +156,38 @@ export class UsersService {
     });
   }
 
-  async getUsersByRole(role: UserRole): Promise<User[]> {
-    return await this.userRepository.find({
+  async getUsersByRole(role: UserRole): Promise<any[]> {
+    // Get users without workload score
+    const users = await this.userRepository.find({
       where: { role, isActive: true },
       select: ['id', 'email', 'fullName', 'role', 'isActive', 'createdAt', 'updatedAt'],
       order: { fullName: 'ASC' },
     });
+
+    // For sales agents, get live workload data
+    if (role === UserRole.SALES_PERSON) {
+      const usersWithLiveWorkload = await Promise.all(
+        users.map(async (user) => {
+          try {
+            const workloadData = await this.liveWorkloadService.getAgentWorkload(user.id);
+            return {
+              ...user,
+              workloadScore: workloadData.workloadScore
+            };
+          } catch (error) {
+            console.error(`Error calculating workload for user ${user.id}:`, error);
+            return {
+              ...user,
+              workloadScore: 0
+            };
+          }
+        })
+      );
+      
+      return usersWithLiveWorkload;
+    }
+
+    return users;
   }
 
   async deleteUser(userId: string): Promise<{ message: string }> {

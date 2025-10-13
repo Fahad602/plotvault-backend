@@ -10,7 +10,8 @@ import {
   UseGuards,
   ParseUUIDPipe,
   ParseIntPipe,
-  DefaultValuePipe 
+  DefaultValuePipe,
+  Request
 } from '@nestjs/common';
 import { LeadsService, CreateLeadDto, UpdateLeadDto, CreateCommunicationDto, CreateNoteDto, LeadFilters } from './leads.service';
 import { LeadWorkflowService } from './lead-workflow.service';
@@ -18,8 +19,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { Permission } from '../auth/permissions.guard';
-import { GetUser } from '../auth/get-user.decorator';
-import { User } from '../users/user.entity';
 import { LeadStatus, LeadSource, LeadPriority } from './lead.entity';
 
 @Controller('leads')
@@ -32,13 +31,19 @@ export class LeadsController {
 
   @Post()
   @RequirePermissions(Permission.CREATE_LEADS)
-  async createLead(@Body() createLeadDto: CreateLeadDto) {
+  async createLead(@Body() createLeadDto: CreateLeadDto, @Request() req) {
+    // Auto-assign to current user if they are a sales agent and no assignment is specified
+    if (req.user.role === 'sales_person' && !createLeadDto.assignedToUserId) {
+      createLeadDto.assignedToUserId = req.user.userId;
+    }
+    
     return await this.leadsService.createLead(createLeadDto);
   }
 
   @Get()
   @RequirePermissions(Permission.VIEW_LEADS)
   async getAllLeads(
+    @Request() req,
     @Query('status') status?: string,
     @Query('source') source?: string,
     @Query('priority') priority?: string,
@@ -49,7 +54,6 @@ export class LeadsController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number = 20,
     @Query('sortBy', new DefaultValuePipe('createdAt')) sortBy: string = 'createdAt',
     @Query('sortOrder', new DefaultValuePipe('DESC')) sortOrder: 'ASC' | 'DESC' = 'DESC',
-    @GetUser() user?: User,
   ) {
     const filters: LeadFilters = {
       status: status ? status.split(',') as LeadStatus[] : undefined,
@@ -61,14 +65,15 @@ export class LeadsController {
     };
 
     return await this.leadsService.getAllLeads(filters, page, limit, sortBy, sortOrder, {
-      userId: user.id,
-      role: user.role
+      userId: req.user.userId,
+      role: req.user.role
     });
   }
 
   @Get('stats')
-  @RequirePermissions(Permission.VIEW_ANALYTICS)
+  @RequirePermissions(Permission.VIEW_LEAD_ANALYTICS)
   async getLeadStats(
+    @Request() req,
     @Query('status') status?: string,
     @Query('source') source?: string,
     @Query('priority') priority?: string,
@@ -83,7 +88,10 @@ export class LeadsController {
       generatedByUserId,
     };
 
-    return await this.leadsService.getLeadStats(filters);
+    return await this.leadsService.getLeadStats(filters, {
+      userId: req.user.userId,
+      role: req.user.role
+    });
   }
 
   @Get('by-source')
@@ -105,7 +113,7 @@ export class LeadsController {
   @Get('my-leads')
   @RequirePermissions(Permission.VIEW_LEADS)
   async getMyLeads(
-    @GetUser() user: User,
+    @Request() req,
     @Query('status') status?: string,
     @Query('source') source?: string,
     @Query('priority') priority?: string,
@@ -119,7 +127,7 @@ export class LeadsController {
       status: status ? status.split(',') as LeadStatus[] : undefined,
       source: source ? source.split(',') as LeadSource[] : undefined,
       priority: priority ? priority.split(',') as LeadPriority[] : undefined,
-      assignedToUserId: user.id,
+      assignedToUserId: req.user.userId,
       search,
     };
 
@@ -153,9 +161,9 @@ export class LeadsController {
   async convertLeadToCustomer(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() customerData: { cnic: string; address: string },
-    @GetUser() user: User,
+    @Request() req,
   ) {
-    return await this.leadsService.convertLeadToCustomer(id, customerData, user.id);
+    return await this.leadsService.convertLeadToCustomer(id, customerData, req.user.userId);
   }
 
   // Communication endpoints
@@ -164,12 +172,12 @@ export class LeadsController {
   async addCommunication(
     @Param('id', ParseUUIDPipe) leadId: string,
     @Body() createCommunicationDto: Omit<CreateCommunicationDto, 'leadId' | 'userId'>,
-    @GetUser() user: User,
+    @Request() req,
   ) {
     return await this.leadsService.addCommunication({
       ...createCommunicationDto,
       leadId,
-      userId: user.id,
+      userId: req.user.userId,
     });
   }
 
@@ -185,12 +193,12 @@ export class LeadsController {
   async addNote(
     @Param('id', ParseUUIDPipe) leadId: string,
     @Body() createNoteDto: Omit<CreateNoteDto, 'leadId' | 'userId'>,
-    @GetUser() user: User,
+    @Request() req,
   ) {
     return await this.leadsService.addNote({
       ...createNoteDto,
       leadId,
-      userId: user.id,
+      userId: req.user.userId,
     });
   }
 
@@ -198,23 +206,23 @@ export class LeadsController {
   @RequirePermissions(Permission.VIEW_LEADS)
   async getLeadNotes(
     @Param('id', ParseUUIDPipe) leadId: string,
-    @GetUser() user: User,
+    @Request() req,
   ) {
-    return await this.leadsService.getLeadNotes(leadId, user.id);
+    return await this.leadsService.getLeadNotes(leadId, req.user.userId);
   }
 
   // Workflow endpoints
   @Post('workflow/process')
   @RequirePermissions(Permission.VIEW_LEADS)
-  async processWorkflow(@GetUser() user: User) {
-    console.log('Manual workflow processing triggered by:', user.fullName);
+  async processWorkflow(@Request() req) {
+    console.log('Manual workflow processing triggered by:', req.user.email);
     await this.leadWorkflowService.processWorkflowAutomation();
     return { message: 'Workflow automation completed successfully' };
   }
 
   @Get('workflow/stats')
   @RequirePermissions(Permission.VIEW_LEAD_ANALYTICS)
-  async getWorkflowStats(@GetUser() user: User) {
+  async getWorkflowStats(@Request() req) {
     return await this.leadWorkflowService.getWorkflowStats();
   }
 }

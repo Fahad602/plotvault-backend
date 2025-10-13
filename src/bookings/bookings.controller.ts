@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query, Request } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Booking, BookingStatus } from '../bookings/booking.entity';
@@ -10,8 +10,13 @@ import { EnhancedPaymentScheduleService } from '../finance/enhanced-payment-sche
 import { PaymentPlanService } from '../finance/payment-plan.service';
 import { PaymentType } from '../finance/payment-schedule.entity';
 import { Payment, PaymentStatus, PaymentMethod } from '../finance/payment.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePermissions } from '../auth/permissions.decorator';
+import { Permission } from '../auth/permissions.guard';
 
 @Controller('bookings')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class BookingsController {
   constructor(
     @InjectRepository(Booking)
@@ -30,7 +35,9 @@ export class BookingsController {
   ) {}
 
   @Get()
+  @RequirePermissions(Permission.VIEW_BOOKINGS)
   async getAllBookings(
+    @Request() req,
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
@@ -39,6 +46,13 @@ export class BookingsController {
     const queryBuilder = this.bookingRepository.createQueryBuilder('booking')
       .leftJoinAndSelect('booking.customer', 'customer')
       .leftJoinAndSelect('booking.plot', 'plot');
+
+    // Apply role-based filtering
+    if (req.user.role === 'sales_person') {
+      console.log('Sales person filtering: showing only bookings created by them');
+      queryBuilder.andWhere('booking.createdById = :userId', { userId: req.user.userId });
+    }
+    // Sales managers and admins can see all bookings (no additional filtering)
 
     if (search) {
       queryBuilder.andWhere(
@@ -99,11 +113,21 @@ export class BookingsController {
   }
 
   @Get(':id')
-  async getBookingById(@Param('id') id: string) {
-    const booking = await this.bookingRepository.findOne({
-      where: { id },
-      relations: ['customer', 'plot', 'installments'],
-    });
+  @RequirePermissions(Permission.VIEW_BOOKINGS)
+  async getBookingById(@Request() req, @Param('id') id: string) {
+    const queryBuilder = this.bookingRepository.createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.customer', 'customer')
+      .leftJoinAndSelect('booking.plot', 'plot')
+      .leftJoinAndSelect('booking.installments', 'installments')
+      .where('booking.id = :id', { id });
+
+    // Apply role-based filtering
+    if (req.user.role === 'sales_person') {
+      console.log('Sales person filtering: checking if booking was created by them');
+      queryBuilder.andWhere('booking.createdById = :userId', { userId: req.user.userId });
+    }
+
+    const booking = await queryBuilder.getOne();
 
     if (!booking) {
       return { error: 'Booking not found' };

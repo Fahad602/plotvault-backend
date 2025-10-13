@@ -10,25 +10,27 @@ import { Installment } from '../finance/installment.entity';
 import { ConstructionProject } from '../construction/construction-project.entity';
 import { Document } from '../documents/document.entity';
 import { Message } from '../communication/message.entity';
-import { User } from '../users/user.entity';
 import { Lead } from '../leads/lead.entity';
 import { Payment } from '../finance/payment.entity';
 import { SalesActivity } from '../users/sales-activity.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([
-    Plot, 
-    Customer, 
-    Booking, 
-    Installment, 
-    ConstructionProject, 
-    Document, 
-    Message,
-    User,
-    Lead,
-    Payment,
-    SalesActivity
-  ])],
+  imports: [
+    TypeOrmModule.forFeature([
+      Plot, 
+      Customer, 
+      Booking, 
+      Installment, 
+      ConstructionProject, 
+      Document, 
+      Message,
+      Lead,
+      Payment,
+      SalesActivity
+    ]),
+    UsersModule,
+  ],
   providers: [SalesManagerDashboardService],
   controllers: [DashboardController, SalesManagerDashboardController],
   exports: [SalesManagerDashboardService],

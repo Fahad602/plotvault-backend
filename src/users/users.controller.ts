@@ -42,9 +42,12 @@ export class UsersController {
   }
 
   @Get()
-  @RequireRoles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  @RequireRoles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES_MANAGER)
   @RequirePermissions(Permission.VIEW_USERS)
-  async getAllUsers(): Promise<User[]> {
+  async getAllUsers(@Query('role') role?: UserRole): Promise<User[]> {
+    if (role) {
+      return this.usersService.getUsersByRole(role);
+    }
     return this.usersService.getAllUsers();
   }
 
@@ -56,7 +59,7 @@ export class UsersController {
   }
 
   @Get('role/:role')
-  @RequireRoles(UserRole.ADMIN, UserRole.ACCOUNTANT)
+  @RequireRoles(UserRole.ADMIN, UserRole.ACCOUNTANT, UserRole.SALES_MANAGER)
   @RequirePermissions(Permission.VIEW_USERS)
   async getUsersByRole(@Param('role') role: UserRole): Promise<User[]> {
     return this.usersService.getUsersByRole(role);

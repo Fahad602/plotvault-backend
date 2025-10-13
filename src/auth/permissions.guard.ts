@@ -144,6 +144,10 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.MANAGE_TEAM_MEMBERS,
     Permission.VIEW_TEAM_ACTIVITIES,
     Permission.ASSIGN_LEADS,
+    
+    // User management (for viewing team members)
+    Permission.VIEW_USERS,
+    Permission.MANAGE_SALES_TEAM,
   ],
   
   // Sales Person - CRM focused permissions only (limited to assigned data)

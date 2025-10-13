@@ -58,16 +58,16 @@ export class LeadWorkflowService {
     {
       fromStatus: LeadStatus.NEW,
       toStatus: LeadStatus.LOST,
-      condition: 'no_contact_30_days',
-      daysDelay: 30,
-      action: 'auto'
+      condition: 'no_contact_90_days',
+      daysDelay: 90,
+      action: 'notification'
     },
     {
       fromStatus: LeadStatus.CONTACTED,
       toStatus: LeadStatus.LOST,
-      condition: 'no_follow_up_14_days',
-      daysDelay: 14,
-      action: 'auto'
+      condition: 'no_follow_up_30_days',
+      daysDelay: 30,
+      action: 'notification'
     }
   ];
 
@@ -106,40 +106,13 @@ export class LeadWorkflowService {
       }
     }
 
-    // Auto-mark leads as lost based on time criteria
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-    // Mark new leads as lost if no contact for 30 days
-    const newLeadsToMarkLost = await this.leadRepository.find({
-      where: {
-        status: LeadStatus.NEW,
-        createdAt: LessThan(thirtyDaysAgo),
-        lastContactedAt: null
-      }
-    });
-
-    for (const lead of newLeadsToMarkLost) {
-      await this.updateLeadStatus(lead.id, LeadStatus.LOST, 'No contact for 30 days - auto-marked as lost');
-      console.log(`❌ Auto-marked as lost: ${lead.fullName} (no contact for 30 days)`);
-    }
-
-    // Mark contacted leads as lost if no follow-up for 14 days
-    const contactedLeadsToMarkLost = await this.leadRepository.find({
-      where: {
-        status: LeadStatus.CONTACTED,
-        lastContactedAt: LessThan(fourteenDaysAgo),
-        nextFollowUpAt: LessThan(fourteenDaysAgo)
-      }
-    });
-
-    for (const lead of contactedLeadsToMarkLost) {
-      await this.updateLeadStatus(lead.id, LeadStatus.LOST, 'No follow-up for 14 days - auto-marked as lost');
-      console.log(`❌ Auto-marked as lost: ${lead.fullName} (no follow-up for 14 days)`);
-    }
+    // Auto-mark leads as lost based on time criteria (DISABLED - too aggressive)
+    // This functionality has been disabled to prevent premature lead loss
+    // Leads should only be marked as lost manually by sales agents/managers
+    // after proper follow-up attempts and qualification
+    
+    console.log('⚠️ Auto-marking leads as lost has been disabled to prevent premature lead loss');
+    console.log('📝 Leads should be manually marked as lost after proper follow-up attempts');
   }
 
   private async processWorkflowNotifications(): Promise<void> {

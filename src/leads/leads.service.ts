@@ -6,6 +6,7 @@ import { LeadCommunication, CommunicationType, CommunicationDirection, Communica
 import { LeadNote, NoteType } from './lead-note.entity';
 import { Customer } from '../customers/customer.entity';
 import { User } from '../users/user.entity';
+import { WorkloadUpdateService } from '../users/workload-update.service';
 
 export interface CreateLeadDto {
   fullName: string;
@@ -93,6 +94,7 @@ export class LeadsService {
     private customerRepository: Repository<Customer>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    private workloadUpdateService: WorkloadUpdateService,
   ) {}
 
   private parseTags(tagsString: string): string[] {
@@ -131,7 +133,14 @@ export class LeadsService {
       tags: createLeadDto.tags ? JSON.stringify(createLeadDto.tags) : null,
     });
 
-    return await this.leadRepository.save(lead);
+    const savedLead = await this.leadRepository.save(lead);
+    
+    // Update workload score for the assigned agent
+    if (savedLead.assignedToUserId) {
+      await this.workloadUpdateService.updateAgentWorkload(savedLead.assignedToUserId);
+    }
+    
+    return savedLead;
   }
 
   async getAllLeads(
@@ -152,11 +161,19 @@ export class LeadsService {
 
     // Apply role-based filtering
     if (currentUser) {
+      console.log('🔍 Applying role-based filtering:', {
+        userId: currentUser.userId,
+        role: currentUser.role
+      });
+      
       if (currentUser.role === 'sales_person') {
         // Sales team members can only see leads assigned to them
+        console.log('👤 Sales person filtering: assignedToUserId =', currentUser.userId);
         queryBuilder.andWhere('lead.assignedToUserId = :userId', { userId: currentUser.userId });
       }
       // Sales managers and admins can see all leads (no additional filtering)
+    } else {
+      console.log('❌ No currentUser provided for role-based filtering');
     }
 
     if (filters.search) {
@@ -262,29 +279,80 @@ export class LeadsService {
   }
 
   async updateLead(id: string, updateLeadDto: UpdateLeadDto): Promise<Lead> {
+    console.log(`🔄 Updating lead ${id} with data:`, JSON.stringify(updateLeadDto, null, 2));
+    
     const lead = await this.getLeadById(id);
+    console.log(`📋 Current lead assignment: ${lead.assignedToUserId} (${lead.assignedToUser?.fullName || 'No agent'})`);
 
     // Validate assigned user if provided
     if (updateLeadDto.assignedToUserId) {
+      console.log(`🔍 Validating assigned user: ${updateLeadDto.assignedToUserId}`);
       const assignedUser = await this.userRepository.findOne({
         where: { id: updateLeadDto.assignedToUserId }
       });
       if (!assignedUser) {
+        console.log(`❌ Assigned user not found: ${updateLeadDto.assignedToUserId}`);
         throw new NotFoundException('Assigned user not found');
       }
+      console.log(`✅ Assigned user found: ${assignedUser.fullName}`);
     }
 
-    Object.assign(lead, {
+    const updateData = {
       ...updateLeadDto,
       assignedToUserId: updateLeadDto.assignedToUserId || null,
       tags: updateLeadDto.tags ? JSON.stringify(updateLeadDto.tags) : lead.tags,
+    };
+    
+    console.log(`💾 Update data:`, JSON.stringify(updateData, null, 2));
+    Object.assign(lead, updateData);
+
+    console.log(`💾 Lead before save:`, {
+      id: lead.id,
+      assignedToUserId: lead.assignedToUserId,
+      assignedToUser: lead.assignedToUser?.fullName
     });
 
-    return await this.leadRepository.save(lead);
+    // Try using update() instead of save() to avoid entity state issues
+    const updateResult = await this.leadRepository.update(lead.id, {
+      assignedToUserId: updateData.assignedToUserId,
+      ...updateData
+    });
+    
+    console.log(`✅ Update result:`, updateResult);
+    console.log(`✅ Rows affected: ${updateResult.affected}`);
+    
+    // Verify the update actually worked by querying the database directly
+    const verifyResult = await this.leadRepository.findOne({
+      where: { id: lead.id },
+      select: ['id', 'assignedToUserId']
+    });
+    console.log(`🔍 Verification query result:`, verifyResult);
+    
+    // Return the updated lead with fresh relations
+    const updatedLead = await this.getLeadById(id);
+    console.log(`🔄 Fresh lead assignment: ${updatedLead.assignedToUserId} (${updatedLead.assignedToUser?.fullName || 'No agent'})`);
+    
+    // Update workload scores if assignment changed
+    if (lead.assignedToUserId !== updatedLead.assignedToUserId) {
+      console.log(`📊 Lead assignment changed, updating workload scores...`);
+      await this.workloadUpdateService.handleLeadAssignment(
+        id, 
+        lead.assignedToUserId, 
+        updatedLead.assignedToUserId
+      );
+    }
+    
+    return updatedLead;
   }
 
   async deleteLead(id: string): Promise<void> {
     const lead = await this.getLeadById(id);
+    
+    // Update workload score for the assigned agent before deleting
+    if (lead.assignedToUserId) {
+      await this.workloadUpdateService.updateAgentWorkload(lead.assignedToUserId);
+    }
+    
     await this.leadRepository.remove(lead);
   }
 
@@ -382,9 +450,26 @@ export class LeadsService {
   }
 
   // Analytics methods
-  async getLeadStats(filters: LeadFilters = {}) {
+  async getLeadStats(filters: LeadFilters = {}, currentUser?: { userId: string; role: string }) {
     const queryBuilder = this.leadRepository.createQueryBuilder('lead');
     this.applyFilters(queryBuilder, filters);
+
+    // Apply role-based filtering (same as getAllLeads)
+    if (currentUser) {
+      console.log('📊 Applying role-based filtering to stats:', {
+        userId: currentUser.userId,
+        role: currentUser.role
+      });
+      
+      if (currentUser.role === 'sales_person') {
+        // Sales team members can only see stats for leads assigned to them
+        console.log('👤 Sales person stats filtering: assignedToUserId =', currentUser.userId);
+        queryBuilder.andWhere('lead.assignedToUserId = :userId', { userId: currentUser.userId });
+      }
+      // Sales managers and admins can see all leads (no additional filtering)
+    } else {
+      console.log('❌ No currentUser provided for stats role-based filtering');
+    }
 
     const [
       totalLeads,
