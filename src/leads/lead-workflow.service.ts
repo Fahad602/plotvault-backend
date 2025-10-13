@@ -153,7 +153,7 @@ export class LeadWorkflowService {
       where: {
         nextFollowUpAt: Between(now, tomorrow)
       },
-      relations: ['assignedToUserId']
+      relations: ['assignedToUser']
     });
 
     for (const lead of upcomingFollowUps) {
@@ -176,7 +176,7 @@ export class LeadWorkflowService {
         nextFollowUpAt: LessThan(now),
         status: LeadStatus.CONTACTED
       },
-      relations: ['assignedToUserId']
+      relations: ['assignedToUser']
     });
 
     for (const lead of overdueFollowUps) {
