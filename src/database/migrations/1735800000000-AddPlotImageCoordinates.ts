@@ -33,6 +33,14 @@ export class AddPlotImageCoordinates1735800000000 implements MigrationInterface 
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    const dbType = queryRunner.connection.options.type;
+    const isPostgres = dbType === 'postgres';
+    
+    // SQLite doesn't support DROP COLUMN, so skip for SQLite
+    if (!isPostgres) {
+      return;
+    }
+    
     const plotsTable = await queryRunner.getTable('plots');
     if (plotsTable) {
       if (plotsTable.findColumnByName('imageBounds')) {

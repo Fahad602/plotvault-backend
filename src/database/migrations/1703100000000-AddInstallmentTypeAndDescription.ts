@@ -26,10 +26,22 @@ export class AddInstallmentTypeAndDescription1703100000000 implements MigrationI
   }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
-            ALTER TABLE "installments" 
-            DROP COLUMN "installmentType",
-            DROP COLUMN "description"
-        `);
+        const dbType = queryRunner.connection.options.type;
+        const isPostgres = dbType === 'postgres';
+        
+        // SQLite doesn't support DROP COLUMN, so skip for SQLite
+        if (!isPostgres) {
+            return;
+        }
+        
+        const installmentsTable = await queryRunner.getTable('installments');
+        if (installmentsTable) {
+            if (installmentsTable.findColumnByName('installmentType')) {
+                await queryRunner.query(`ALTER TABLE "installments" DROP COLUMN "installmentType"`);
+            }
+            if (installmentsTable.findColumnByName('description')) {
+                await queryRunner.query(`ALTER TABLE "installments" DROP COLUMN "description"`);
+            }
+        }
     }
 }

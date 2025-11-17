@@ -40,22 +40,46 @@ export class AddSalesTeamFields1735690000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Remove foreign key constraint
-    await queryRunner.query(`
-      ALTER TABLE "users" DROP CONSTRAINT "FK_users_assignedToUserId"
-    `);
+    const dbType = queryRunner.connection.options.type;
+    const isPostgres = dbType === 'postgres';
+    
+    // Remove foreign key constraint (only if it exists, PostgreSQL-specific)
+    if (isPostgres) {
+      try {
+        await queryRunner.query(`
+          ALTER TABLE "users" DROP CONSTRAINT IF EXISTS "FK_users_assignedToUserId"
+        `);
+      } catch (error) {
+        // Constraint might not exist, ignore
+      }
+    }
 
     // Remove columns
-    await queryRunner.query(`
-      ALTER TABLE "users" 
-      DROP COLUMN "assignedToUserId",
-      DROP COLUMN "department",
-      DROP COLUMN "employeeId",
-      DROP COLUMN "phone",
-      DROP COLUMN "address",
-      DROP COLUMN "workloadScore"
-    `);
-
+    // SQLite doesn't support DROP COLUMN, so we'll skip this in SQLite
+    if (isPostgres) {
+      const usersTable = await queryRunner.getTable('users');
+      if (usersTable) {
+        if (usersTable.findColumnByName('assignedToUserId')) {
+          await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "assignedToUserId"`);
+        }
+        if (usersTable.findColumnByName('department')) {
+          await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "department"`);
+        }
+        if (usersTable.findColumnByName('employeeId')) {
+          await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "employeeId"`);
+        }
+        if (usersTable.findColumnByName('phone')) {
+          await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "phone"`);
+        }
+        if (usersTable.findColumnByName('address')) {
+          await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "address"`);
+        }
+        if (usersTable.findColumnByName('workloadScore')) {
+          await queryRunner.query(`ALTER TABLE "users" DROP COLUMN "workloadScore"`);
+        }
+      }
+    }
+    // Note: SQLite doesn't support DROP COLUMN, so down migration is limited for SQLite
     // Note: We cannot easily remove enum values in PostgreSQL
     // The sales_manager value will remain in the enum but won't be used
   }

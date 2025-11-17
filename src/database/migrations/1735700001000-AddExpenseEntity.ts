@@ -4,15 +4,34 @@ export class AddExpenseEntity1735700001000 implements MigrationInterface {
     name = 'AddExpenseEntity1735700001000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.createTable(
-            new Table({
-                name: 'expenses',
-                columns: [
+        const dbType = queryRunner.connection.options.type;
+        const isPostgres = dbType === 'postgres';
+        const idType = isPostgres ? 'uuid' : 'varchar';
+        const idDefault = isPostgres ? 'gen_random_uuid()' : "lower(hex(randomblob(16)))";
+        const timestampType = isPostgres ? 'timestamp' : 'datetime';
+        const timestampDefault = isPostgres ? 'now()' : "datetime('now')";
+        
+        // Enable UUID extension for PostgreSQL if needed
+        if (isPostgres) {
+            try {
+                await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
+            } catch (error) {
+                // Extension might already exist or not have permission, continue
+            }
+        }
+        
+        // Check if table exists first
+        const tableExists = await queryRunner.getTable('expenses');
+        if (!tableExists) {
+            await queryRunner.createTable(
+                new Table({
+                    name: 'expenses',
+                    columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: idType,
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        default: idDefault,
                     },
                     {
                         name: 'expenseName',
@@ -100,22 +119,22 @@ export class AddExpenseEntity1735700001000 implements MigrationInterface {
                     },
                     {
                         name: 'accountId',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: true,
                     },
                     {
                         name: 'submittedBy',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: true,
                     },
                     {
                         name: 'approvedBy',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: true,
                     },
                     {
                         name: 'approvedAt',
-                        type: 'timestamp',
+                        type: timestampType,
                         isNullable: true,
                     },
                     {
@@ -125,39 +144,55 @@ export class AddExpenseEntity1735700001000 implements MigrationInterface {
                     },
                     {
                         name: 'createdAt',
-                        type: 'timestamp',
-                        default: 'now()',
+                        type: timestampType,
+                        default: timestampDefault,
                     },
                     {
                         name: 'updatedAt',
-                        type: 'timestamp',
-                        default: 'now()',
+                        type: timestampType,
+                        default: timestampDefault,
                     },
-                ],
-            }),
-            true,
-        );
+                    ],
+                }),
+                true,
+            );
+        }
 
-        // Add foreign keys
-        await queryRunner.createForeignKey(
-            'expenses',
-            new TableForeignKey({
-                columnNames: ['submittedBy'],
-                referencedColumnNames: ['id'],
-                referencedTableName: 'users',
-                onDelete: 'SET NULL',
-            }),
-        );
+        // Add foreign keys (check if they exist first for PostgreSQL)
+        const table = await queryRunner.getTable('expenses');
+        if (table) {
+            // Check and add submittedBy foreign key
+            const hasSubmittedByFk = table.foreignKeys.find(fk => 
+                fk.columnNames.length === 1 && fk.columnNames[0] === 'submittedBy'
+            );
+            if (!hasSubmittedByFk) {
+                await queryRunner.createForeignKey(
+                    'expenses',
+                    new TableForeignKey({
+                        columnNames: ['submittedBy'],
+                        referencedColumnNames: ['id'],
+                        referencedTableName: 'users',
+                        onDelete: 'SET NULL',
+                    }),
+                );
+            }
 
-        await queryRunner.createForeignKey(
-            'expenses',
-            new TableForeignKey({
-                columnNames: ['approvedBy'],
-                referencedColumnNames: ['id'],
-                referencedTableName: 'users',
-                onDelete: 'SET NULL',
-            }),
-        );
+            // Check and add approvedBy foreign key
+            const hasApprovedByFk = table.foreignKeys.find(fk => 
+                fk.columnNames.length === 1 && fk.columnNames[0] === 'approvedBy'
+            );
+            if (!hasApprovedByFk) {
+                await queryRunner.createForeignKey(
+                    'expenses',
+                    new TableForeignKey({
+                        columnNames: ['approvedBy'],
+                        referencedColumnNames: ['id'],
+                        referencedTableName: 'users',
+                        onDelete: 'SET NULL',
+                    }),
+                );
+            }
+        }
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {

@@ -4,29 +4,48 @@ export class AddPlotOwnershipHistory1735700000000 implements MigrationInterface 
     name = 'AddPlotOwnershipHistory1735700000000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.createTable(
-            new Table({
-                name: 'plot_ownership_history',
-                columns: [
+        const dbType = queryRunner.connection.options.type;
+        const isPostgres = dbType === 'postgres';
+        const idType = isPostgres ? 'uuid' : 'varchar';
+        const idDefault = isPostgres ? 'gen_random_uuid()' : "lower(hex(randomblob(16)))";
+        const timestampType = isPostgres ? 'timestamp' : 'datetime';
+        const timestampDefault = isPostgres ? 'now()' : "datetime('now')";
+        
+        // Enable UUID extension for PostgreSQL if needed
+        if (isPostgres) {
+            try {
+                await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`);
+            } catch (error) {
+                // Extension might already exist or not have permission, continue
+            }
+        }
+        
+        // Check if table exists first
+        const tableExists = await queryRunner.getTable('plot_ownership_history');
+        if (!tableExists) {
+            await queryRunner.createTable(
+                new Table({
+                    name: 'plot_ownership_history',
+                    columns: [
                     {
                         name: 'id',
-                        type: 'uuid',
+                        type: idType,
                         isPrimary: true,
-                        default: 'uuid_generate_v4()',
+                        default: idDefault,
                     },
                     {
                         name: 'plotId',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: false,
                     },
                     {
                         name: 'customerId',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: true,
                     },
                     {
                         name: 'bookingId',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: true,
                     },
                     {
@@ -68,59 +87,87 @@ export class AddPlotOwnershipHistory1735700000000 implements MigrationInterface 
                     },
                     {
                         name: 'recordedBy',
-                        type: 'uuid',
+                        type: idType,
                         isNullable: true,
                     },
                     {
                         name: 'createdAt',
-                        type: 'timestamp',
-                        default: 'now()',
+                        type: timestampType,
+                        default: timestampDefault,
                     },
-                ],
-            }),
-            true,
-        );
+                    ],
+                }),
+                true,
+            );
+        }
 
-        // Add foreign keys
-        await queryRunner.createForeignKey(
-            'plot_ownership_history',
-            new TableForeignKey({
-                columnNames: ['plotId'],
-                referencedColumnNames: ['id'],
-                referencedTableName: 'plots',
-                onDelete: 'CASCADE',
-            }),
-        );
+        // Add foreign keys (check if they exist first for PostgreSQL)
+        const table = await queryRunner.getTable('plot_ownership_history');
+        if (table) {
+            // Check and add plotId foreign key
+            const hasPlotIdFk = table.foreignKeys.find(fk => 
+                fk.columnNames.length === 1 && fk.columnNames[0] === 'plotId'
+            );
+            if (!hasPlotIdFk) {
+                await queryRunner.createForeignKey(
+                    'plot_ownership_history',
+                    new TableForeignKey({
+                        columnNames: ['plotId'],
+                        referencedColumnNames: ['id'],
+                        referencedTableName: 'plots',
+                        onDelete: 'CASCADE',
+                    }),
+                );
+            }
 
-        await queryRunner.createForeignKey(
-            'plot_ownership_history',
-            new TableForeignKey({
-                columnNames: ['customerId'],
-                referencedColumnNames: ['id'],
-                referencedTableName: 'customers',
-                onDelete: 'SET NULL',
-            }),
-        );
+            // Check and add customerId foreign key
+            const hasCustomerIdFk = table.foreignKeys.find(fk => 
+                fk.columnNames.length === 1 && fk.columnNames[0] === 'customerId'
+            );
+            if (!hasCustomerIdFk) {
+                await queryRunner.createForeignKey(
+                    'plot_ownership_history',
+                    new TableForeignKey({
+                        columnNames: ['customerId'],
+                        referencedColumnNames: ['id'],
+                        referencedTableName: 'customers',
+                        onDelete: 'SET NULL',
+                    }),
+                );
+            }
 
-        await queryRunner.createForeignKey(
-            'plot_ownership_history',
-            new TableForeignKey({
-                columnNames: ['bookingId'],
-                referencedColumnNames: ['id'],
-                referencedTableName: 'bookings',
-                onDelete: 'SET NULL',
-            }),
-        );
+            // Check and add bookingId foreign key
+            const hasBookingIdFk = table.foreignKeys.find(fk => 
+                fk.columnNames.length === 1 && fk.columnNames[0] === 'bookingId'
+            );
+            if (!hasBookingIdFk) {
+                await queryRunner.createForeignKey(
+                    'plot_ownership_history',
+                    new TableForeignKey({
+                        columnNames: ['bookingId'],
+                        referencedColumnNames: ['id'],
+                        referencedTableName: 'bookings',
+                        onDelete: 'SET NULL',
+                    }),
+                );
+            }
 
-        await queryRunner.createForeignKey(
-            'plot_ownership_history',
-            new TableForeignKey({
-                columnNames: ['recordedBy'],
-                referencedColumnNames: ['id'],
-                referencedTableName: 'users',
-                onDelete: 'SET NULL',
-            }),
-        );
+            // Check and add recordedBy foreign key
+            const hasRecordedByFk = table.foreignKeys.find(fk => 
+                fk.columnNames.length === 1 && fk.columnNames[0] === 'recordedBy'
+            );
+            if (!hasRecordedByFk) {
+                await queryRunner.createForeignKey(
+                    'plot_ownership_history',
+                    new TableForeignKey({
+                        columnNames: ['recordedBy'],
+                        referencedColumnNames: ['id'],
+                        referencedTableName: 'users',
+                        onDelete: 'SET NULL',
+                    }),
+                );
+            }
+        }
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {

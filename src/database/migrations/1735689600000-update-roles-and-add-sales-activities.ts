@@ -12,28 +12,37 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
         const timestampFunc = isPostgres ? 'CURRENT_TIMESTAMP' : "datetime('now')";
         const timestampFuncWithOffset = isPostgres ? "(CURRENT_TIMESTAMP - INTERVAL '1 day')" : "datetime('now', '-1 day')";
 
-        // Create sales_activities table
-        await queryRunner.query(`
-            CREATE TABLE "sales_activities" (
-                "id" varchar PRIMARY KEY NOT NULL,
-                "userId" varchar NOT NULL,
-                "activityType" varchar NOT NULL,
-                "description" varchar NOT NULL,
-                "entityType" varchar,
-                "entityId" varchar,
-                "metadata" text,
-                "potentialValue" decimal(12,2),
-                "duration" integer,
-                "isSuccessful" boolean NOT NULL DEFAULT (0),
-                "notes" text,
-                "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
-            )
-        `);
+        // Check if sales_activities table exists before creating
+        const salesActivitiesTable = await queryRunner.getTable('sales_activities');
+        if (!salesActivitiesTable) {
+            // Create sales_activities table
+            const booleanDefault = isPostgres ? 'false' : '(0)';
+            await queryRunner.query(`
+                CREATE TABLE "sales_activities" (
+                    "id" varchar PRIMARY KEY NOT NULL,
+                    "userId" varchar NOT NULL,
+                    "activityType" varchar NOT NULL,
+                    "description" varchar NOT NULL,
+                    "entityType" varchar,
+                    "entityId" varchar,
+                    "metadata" text,
+                    "potentialValue" decimal(12,2),
+                    "duration" integer,
+                    "isSuccessful" boolean NOT NULL DEFAULT ${booleanDefault},
+                    "notes" text,
+                    "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
+                )
+            `);
+        }
 
-        // Add foreign key constraint for sales_activities
-        await queryRunner.query(`
-            CREATE INDEX "IDX_sales_activities_userId" ON "sales_activities" ("userId")
-        `);
+        // Add index for sales_activities (use IF NOT EXISTS for safety)
+        try {
+            await queryRunner.query(`
+                CREATE INDEX IF NOT EXISTS "IDX_sales_activities_userId" ON "sales_activities" ("userId")
+            `);
+        } catch (error) {
+            // Index might already exist or table might not exist, ignore
+        }
 
         // Update existing user roles from old system to new system (only if users table exists)
         const usersTable = await queryRunner.getTable('users');
@@ -65,6 +74,7 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
                 // Create default admin user (password: admin123)
                 const hashedPassword = '$2a$10$rOzJqQZQZQZQZQZQZQZQZOzJqQZQZQZQZQZQZQZOzJqQZQZQZQZQ'; // This should be properly hashed
                 const idGen = isPostgres ? "gen_random_uuid()" : "lower(hex(randomblob(16)))";
+                const isActiveValue = isPostgres ? 'true' : '1';
                 await queryRunner.query(`
                     INSERT INTO "users" ("id", "email", "passwordHash", "fullName", "role", "isActive", "createdAt", "updatedAt")
                     VALUES (
@@ -73,7 +83,7 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
                         '${hashedPassword}',
                         'System Administrator',
                         'admin',
-                        1,
+                        ${isActiveValue},
                         ${timestampFunc},
                         ${timestampFunc}
                     )
@@ -88,6 +98,7 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
             for (const salesPerson of salesPersons) {
                 // Add login activity
                 const activityIdGen = isPostgres ? "gen_random_uuid()" : "lower(hex(randomblob(16)))";
+                const isSuccessfulValue = isPostgres ? 'true' : '1';
                 await queryRunner.query(`
                     INSERT INTO "sales_activities" ("id", "userId", "activityType", "description", "isSuccessful", "createdAt")
                     VALUES (
@@ -95,7 +106,7 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
                         '${salesPerson.id}',
                         'login',
                         'User logged into the system',
-                        1,
+                        ${isSuccessfulValue},
                         ${timestampFuncWithOffset}
                     )
                 `);

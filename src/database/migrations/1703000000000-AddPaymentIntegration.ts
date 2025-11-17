@@ -101,25 +101,30 @@ export class AddPaymentIntegration1703000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Remove columns from existing tables
-    await queryRunner.query(`
-      ALTER TABLE "payment_schedules" 
-      DROP COLUMN "paymentPlanId"
-    `);
-
-    // Note: SQLite doesn't support dropping multiple columns in one statement
-    await queryRunner.query(`
-      ALTER TABLE "bookings" 
-      DROP COLUMN "paidAmount"
-    `);
+    const dbType = queryRunner.connection.options.type;
+    const isPostgres = dbType === 'postgres';
     
-    await queryRunner.query(`
-      ALTER TABLE "bookings" 
-      DROP COLUMN "pendingAmount"
-    `);
+    // SQLite doesn't support DROP COLUMN, so skip column drops for SQLite
+    if (isPostgres) {
+      // Remove columns from existing tables
+      const paymentSchedulesTable = await queryRunner.getTable('payment_schedules');
+      if (paymentSchedulesTable && paymentSchedulesTable.findColumnByName('paymentPlanId')) {
+        await queryRunner.query(`ALTER TABLE "payment_schedules" DROP COLUMN "paymentPlanId"`);
+      }
 
-    // Drop new tables
-    await queryRunner.query(`DROP TABLE "payment_proofs"`);
-    await queryRunner.query(`DROP TABLE "payment_plans"`);
+      const bookingsTable = await queryRunner.getTable('bookings');
+      if (bookingsTable) {
+        if (bookingsTable.findColumnByName('paidAmount')) {
+          await queryRunner.query(`ALTER TABLE "bookings" DROP COLUMN "paidAmount"`);
+        }
+        if (bookingsTable.findColumnByName('pendingAmount')) {
+          await queryRunner.query(`ALTER TABLE "bookings" DROP COLUMN "pendingAmount"`);
+        }
+      }
+    }
+
+    // Drop new tables (works for both SQLite and PostgreSQL)
+    await queryRunner.query(`DROP TABLE IF EXISTS "payment_proofs"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "payment_plans"`);
   }
 }
