@@ -32,9 +32,31 @@ import { SalesActivity } from '../users/sales-activity.entity';
 
 const configService = new ConfigService();
 
+// Determine database type based on DATABASE_URL (same logic as app.module.ts)
+const databaseUrl = process.env.DATABASE_URL || configService.get('DATABASE_URL');
+const isPostgres = databaseUrl && (databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://'));
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Create DataSource configuration based on environment
+let dataSourceConfig: any;
+
+if (isProduction && isPostgres) {
+  // Production PostgreSQL
+  dataSourceConfig = {
+    type: 'postgres' as const,
+    url: databaseUrl,
+    ssl: { rejectUnauthorized: false },
+  };
+} else {
+  // Development SQLite or fallback
+  dataSourceConfig = {
+    type: 'sqlite' as const,
+    database: databaseUrl || 'queen-hills.db',
+  };
+}
+
 export const AppDataSource = new DataSource({
-  type: 'sqlite',
-  database: configService.get('DATABASE_URL') || 'queen-hills.db',
+  ...dataSourceConfig,
   entities: [
     User, 
     Customer, 

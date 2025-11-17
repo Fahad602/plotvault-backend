@@ -4,6 +4,13 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
     name = 'MigrateUserRoles1735689700000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        // Detect database type
+        const dbType = queryRunner.connection.options.type;
+        const isPostgres = dbType === 'postgres';
+        const timestampType = isPostgres ? 'timestamp' : 'datetime';
+        const timestampDefault = isPostgres ? 'CURRENT_TIMESTAMP' : "(datetime('now'))";
+        const timestampFunc = isPostgres ? 'CURRENT_TIMESTAMP' : "datetime('now')";
+
         // Step 1: Create sales_activities table first
         await queryRunner.query(`
             CREATE TABLE IF NOT EXISTS "sales_activities" (
@@ -18,7 +25,7 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
                 "duration" integer,
                 "isSuccessful" boolean NOT NULL DEFAULT (0),
                 "notes" text,
-                "createdAt" datetime NOT NULL DEFAULT (datetime('now'))
+                "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
             )
         `);
 
@@ -82,8 +89,8 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
                     "fullName" varchar NOT NULL,
                     "role" varchar CHECK( "role" IN ('admin','sales_person','accountant','investor','buyer','auditor') ) NOT NULL DEFAULT ('buyer'),
                     "isActive" boolean NOT NULL DEFAULT (1),
-                    "createdAt" datetime NOT NULL DEFAULT (datetime('now')),
-                    "updatedAt" datetime NOT NULL DEFAULT (datetime('now')),
+                    "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
+                    "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
                     CONSTRAINT "UQ_97672ac88f789774dd47f7c8be3" UNIQUE ("email")
                 )
             `);
@@ -122,8 +129,8 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
                         'System Administrator',
                         'admin',
                         1,
-                        datetime('now'),
-                        datetime('now')
+                        ${timestampFunc},
+                        ${timestampFunc}
                     )
                 `);
                 console.log('Default admin user created');

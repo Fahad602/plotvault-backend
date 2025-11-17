@@ -4,6 +4,12 @@ export class AddPaymentIntegration1703000000000 implements MigrationInterface {
   name = 'AddPaymentIntegration1703000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Detect database type
+    const dbType = queryRunner.connection.options.type;
+    const isPostgres = dbType === 'postgres';
+    const timestampType = isPostgres ? 'timestamp' : 'datetime';
+    const timestampDefault = isPostgres ? 'CURRENT_TIMESTAMP' : "(datetime('now'))";
+
     // Create payment_plans table
     await queryRunner.query(`
       CREATE TABLE "payment_plans" (
@@ -21,8 +27,8 @@ export class AddPaymentIntegration1703000000000 implements MigrationInterface {
         "tenureMonths" integer NOT NULL DEFAULT 24,
         "status" varchar NOT NULL DEFAULT 'active',
         "notes" text,
-        "createdAt" datetime NOT NULL DEFAULT (datetime('now')),
-        "updatedAt" datetime NOT NULL DEFAULT (datetime('now'))
+        "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
+        "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
       )
     `);
 
@@ -38,8 +44,8 @@ export class AddPaymentIntegration1703000000000 implements MigrationInterface {
         "proofType" varchar NOT NULL DEFAULT 'screenshot',
         "description" text,
         "uploadedBy" varchar,
-        "createdAt" datetime NOT NULL DEFAULT (datetime('now')),
-        "updatedAt" datetime NOT NULL DEFAULT (datetime('now'))
+        "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
+        "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
       )
     `);
 

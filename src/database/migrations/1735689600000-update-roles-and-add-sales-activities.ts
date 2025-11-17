@@ -4,6 +4,14 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
     name = 'UpdateRolesAndAddSalesActivities1735689600000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        // Detect database type
+        const dbType = queryRunner.connection.options.type;
+        const isPostgres = dbType === 'postgres';
+        const timestampType = isPostgres ? 'timestamp' : 'datetime';
+        const timestampDefault = isPostgres ? 'CURRENT_TIMESTAMP' : "(datetime('now'))";
+        const timestampFunc = isPostgres ? 'CURRENT_TIMESTAMP' : "datetime('now')";
+        const timestampFuncWithOffset = isPostgres ? "(CURRENT_TIMESTAMP - INTERVAL '1 day')" : "datetime('now', '-1 day')";
+
         // Create sales_activities table
         await queryRunner.query(`
             CREATE TABLE "sales_activities" (
@@ -18,7 +26,7 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
                 "duration" integer,
                 "isSuccessful" boolean NOT NULL DEFAULT (0),
                 "notes" text,
-                "createdAt" datetime NOT NULL DEFAULT (datetime('now'))
+                "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
             )
         `);
 
@@ -56,17 +64,18 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
             if (adminExists[0]?.count === 0) {
                 // Create default admin user (password: admin123)
                 const hashedPassword = '$2a$10$rOzJqQZQZQZQZQZQZQZQZOzJqQZQZQZQZQZQZQZOzJqQZQZQZQZQ'; // This should be properly hashed
+                const idGen = isPostgres ? "gen_random_uuid()" : "lower(hex(randomblob(16)))";
                 await queryRunner.query(`
                     INSERT INTO "users" ("id", "email", "passwordHash", "fullName", "role", "isActive", "createdAt", "updatedAt")
                     VALUES (
-                        lower(hex(randomblob(16))),
+                        ${idGen},
                         'admin@queenhills.com',
                         '${hashedPassword}',
                         'System Administrator',
                         'admin',
                         1,
-                        datetime('now'),
-                        datetime('now')
+                        ${timestampFunc},
+                        ${timestampFunc}
                     )
                 `);
             }
@@ -78,15 +87,16 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
 
             for (const salesPerson of salesPersons) {
                 // Add login activity
+                const activityIdGen = isPostgres ? "gen_random_uuid()" : "lower(hex(randomblob(16)))";
                 await queryRunner.query(`
                     INSERT INTO "sales_activities" ("id", "userId", "activityType", "description", "isSuccessful", "createdAt")
                     VALUES (
-                        lower(hex(randomblob(16))),
+                        ${activityIdGen},
                         '${salesPerson.id}',
                         'login',
                         'User logged into the system',
                         1,
-                        datetime('now', '-1 day')
+                        ${timestampFuncWithOffset}
                     )
                 `);
             }
