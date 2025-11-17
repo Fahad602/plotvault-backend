@@ -85,7 +85,10 @@ export class DashboardController {
     const quarterlyGrowth = this.calculateQuarterlyGrowth(monthlyRevenue, totalRevenue);
 
     // Calculate customer satisfaction (simplified - based on completed bookings vs total)
-    const customerSatisfaction = totalBookings > 0 ? Math.round((soldPlots / totalBookings) * 100) : 0;
+    // Cap at 100% to prevent UI issues
+    const customerSatisfaction = totalBookings > 0 
+      ? Math.min(100, Math.round((soldPlots / totalBookings) * 100)) 
+      : 0;
 
     // System alerts (overdue payments + pending documents)
     const systemAlerts = overdueInstallments + pendingDocuments;

@@ -27,62 +27,69 @@ export class UpdateRolesAndAddSalesActivities1735689600000 implements MigrationI
             CREATE INDEX "IDX_sales_activities_userId" ON "sales_activities" ("userId")
         `);
 
-        // Update existing user roles from old system to new system
-        await queryRunner.query(`
-            UPDATE "users" SET "role" = 'admin' WHERE "role" = 'super_admin'
-        `);
-
-        await queryRunner.query(`
-            UPDATE "users" SET "role" = 'sales_person' WHERE "role" = 'sales_agent'
-        `);
-
-        // Add salesActivities column to users table if it doesn't exist
-        // Note: TypeORM will handle the relationship, but we need to ensure the foreign key works
-        await queryRunner.query(`
-            CREATE INDEX "IDX_users_role" ON "users" ("role")
-        `);
-
-        // Create a default admin user if none exists
-        const adminExists = await queryRunner.query(`
-            SELECT COUNT(*) as count FROM "users" WHERE "role" = 'admin'
-        `);
-
-        if (adminExists[0].count === 0) {
-            // Create default admin user (password: admin123)
-            const hashedPassword = '$2a$10$rOzJqQZQZQZQZQZQZQZQZOzJqQZQZQZQZQZQZQZQZOzJqQZQZQZQZQ'; // This should be properly hashed
+        // Update existing user roles from old system to new system (only if users table exists)
+        const usersTable = await queryRunner.getTable('users');
+        if (usersTable) {
             await queryRunner.query(`
-                INSERT INTO "users" ("id", "email", "passwordHash", "fullName", "role", "isActive", "createdAt", "updatedAt")
-                VALUES (
-                    lower(hex(randomblob(16))),
-                    'admin@queenhills.com',
-                    '${hashedPassword}',
-                    'System Administrator',
-                    'admin',
-                    1,
-                    datetime('now'),
-                    datetime('now')
-                )
+                UPDATE "users" SET "role" = 'admin' WHERE "role" = 'super_admin'
             `);
-        }
 
-        // Create sample sales activities for existing sales persons
-        const salesPersons = await queryRunner.query(`
-            SELECT "id" FROM "users" WHERE "role" = 'sales_person'
-        `);
-
-        for (const salesPerson of salesPersons) {
-            // Add login activity
             await queryRunner.query(`
-                INSERT INTO "sales_activities" ("id", "userId", "activityType", "description", "isSuccessful", "createdAt")
-                VALUES (
-                    lower(hex(randomblob(16))),
-                    '${salesPerson.id}',
-                    'login',
-                    'User logged into the system',
-                    1,
-                    datetime('now', '-1 day')
-                )
+                UPDATE "users" SET "role" = 'sales_person' WHERE "role" = 'sales_agent'
             `);
+
+            // Add salesActivities column to users table if it doesn't exist
+            // Note: TypeORM will handle the relationship, but we need to ensure the foreign key works
+            try {
+                await queryRunner.query(`
+                    CREATE INDEX IF NOT EXISTS "IDX_users_role" ON "users" ("role")
+                `);
+            } catch (error) {
+                // Index might already exist, ignore
+            }
+
+            // Create a default admin user if none exists
+            const adminExists = await queryRunner.query(`
+                SELECT COUNT(*) as count FROM "users" WHERE "role" = 'admin'
+            `);
+
+            if (adminExists[0]?.count === 0) {
+                // Create default admin user (password: admin123)
+                const hashedPassword = '$2a$10$rOzJqQZQZQZQZQZQZQZQZOzJqQZQZQZQZQZQZQZOzJqQZQZQZQZQ'; // This should be properly hashed
+                await queryRunner.query(`
+                    INSERT INTO "users" ("id", "email", "passwordHash", "fullName", "role", "isActive", "createdAt", "updatedAt")
+                    VALUES (
+                        lower(hex(randomblob(16))),
+                        'admin@queenhills.com',
+                        '${hashedPassword}',
+                        'System Administrator',
+                        'admin',
+                        1,
+                        datetime('now'),
+                        datetime('now')
+                    )
+                `);
+            }
+
+            // Create sample sales activities for existing sales persons
+            const salesPersons = await queryRunner.query(`
+                SELECT "id" FROM "users" WHERE "role" = 'sales_person'
+            `);
+
+            for (const salesPerson of salesPersons) {
+                // Add login activity
+                await queryRunner.query(`
+                    INSERT INTO "sales_activities" ("id", "userId", "activityType", "description", "isSuccessful", "createdAt")
+                    VALUES (
+                        lower(hex(randomblob(16))),
+                        '${salesPerson.id}',
+                        'login',
+                        'User logged into the system',
+                        1,
+                        datetime('now', '-1 day')
+                    )
+                `);
+            }
         }
     }
 

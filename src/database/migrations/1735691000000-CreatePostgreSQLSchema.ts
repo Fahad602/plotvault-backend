@@ -4,6 +4,13 @@ export class CreatePostgreSQLSchema1735691000000 implements MigrationInterface {
     name = 'CreatePostgreSQLSchema1735691000000'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
+        // This migration is PostgreSQL-specific, skip for SQLite
+        const dbType = queryRunner.connection.options.type;
+        if (dbType !== 'postgres') {
+            console.log('Skipping PostgreSQL-specific migration for', dbType);
+            return;
+        }
+
         // Enable UUID extension
         await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
         

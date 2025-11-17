@@ -43,31 +43,47 @@ export class AddPaymentIntegration1703000000000 implements MigrationInterface {
       )
     `);
 
-    // Add new columns to bookings table
-    await queryRunner.query(`
-      ALTER TABLE "bookings" 
-      ADD COLUMN "paidAmount" decimal(12,2) DEFAULT 0
-    `);
-    
-    await queryRunner.query(`
-      ALTER TABLE "bookings" 
-      ADD COLUMN "pendingAmount" decimal(12,2) DEFAULT 0
-    `);
+    // Add new columns to bookings table (only if table exists)
+    const bookingsTable = await queryRunner.getTable('bookings');
+    if (bookingsTable) {
+      const hasPaidAmount = bookingsTable.findColumnByName('paidAmount');
+      const hasPendingAmount = bookingsTable.findColumnByName('pendingAmount');
 
-    // Add paymentPlanId column to payment_schedules table
-    await queryRunner.query(`
-      ALTER TABLE "payment_schedules" 
-      ADD COLUMN "paymentPlanId" varchar
-    `);
+      if (!hasPaidAmount) {
+        await queryRunner.query(`
+          ALTER TABLE "bookings" 
+          ADD COLUMN "paidAmount" decimal(12,2) DEFAULT 0
+        `);
+      }
+      
+      if (!hasPendingAmount) {
+        await queryRunner.query(`
+          ALTER TABLE "bookings" 
+          ADD COLUMN "pendingAmount" decimal(12,2) DEFAULT 0
+        `);
+      }
+
+      // Update existing bookings to set pendingAmount = totalAmount - paidAmount
+      await queryRunner.query(`
+        UPDATE "bookings" 
+        SET "pendingAmount" = "totalAmount" - COALESCE("paidAmount", 0)
+      `);
+    }
+
+    // Add paymentPlanId column to payment_schedules table (only if table exists)
+    const paymentSchedulesTable = await queryRunner.getTable('payment_schedules');
+    if (paymentSchedulesTable) {
+      const hasPaymentPlanId = paymentSchedulesTable.findColumnByName('paymentPlanId');
+      if (!hasPaymentPlanId) {
+        await queryRunner.query(`
+          ALTER TABLE "payment_schedules" 
+          ADD COLUMN "paymentPlanId" varchar
+        `);
+      }
+    }
 
     // Note: SQLite foreign key constraints are handled by TypeORM automatically
     // We'll let TypeORM manage the relationships rather than adding explicit constraints
-
-    // Update existing bookings to set pendingAmount = totalAmount - paidAmount
-    await queryRunner.query(`
-      UPDATE "bookings" 
-      SET "pendingAmount" = "totalAmount" - COALESCE("paidAmount", 0)
-    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

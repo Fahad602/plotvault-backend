@@ -4,6 +4,9 @@ import { Repository } from 'typeorm';
 import { Payment, PaymentMethod, PaymentStatus } from './payment.entity';
 import { PaymentSchedule } from './payment-schedule.entity';
 import { Installment, InstallmentStatus } from './installment.entity';
+import { Booking, BookingStatus } from '../bookings/booking.entity';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction, AuditEntity, AuditSeverity } from '../audit/audit-log.entity';
 
 @Injectable()
 export class PaymentService {
@@ -14,6 +17,9 @@ export class PaymentService {
     private paymentScheduleRepository: Repository<PaymentSchedule>,
     @InjectRepository(Installment)
     private installmentRepository: Repository<Installment>,
+    @InjectRepository(Booking)
+    private bookingRepository: Repository<Booking>,
+    private auditService: AuditService,
   ) {}
 
   async createPayment(
@@ -71,9 +77,38 @@ export class PaymentService {
       if (paymentSchedule.paymentType === 'installment') {
         await this.updateInstallmentsForPayment(paymentSchedule, payment.amount);
       }
+
+      // Update booking paid amount and status
+      await this.updateBookingPayment(paymentSchedule.bookingId, payment.amount);
+
+      // Audit log
+      await this.auditService.log(
+        approvedBy,
+        AuditAction.PAYMENT,
+        AuditEntity.PAYMENT,
+        `Payment approved: PKR ${payment.amount} for booking ${paymentSchedule.bookingId}`,
+        {
+          entityId: payment.id,
+          newValues: { amount: payment.amount, status: payment.status },
+          severity: AuditSeverity.HIGH,
+          isSensitive: true,
+        },
+      );
     } else {
       payment.status = PaymentStatus.FAILED;
       payment.rejectionReason = rejectionReason;
+
+      // Audit log rejection
+      await this.auditService.log(
+        approvedBy,
+        AuditAction.REJECT,
+        AuditEntity.PAYMENT,
+        `Payment rejected: PKR ${payment.amount} - ${rejectionReason}`,
+        {
+          entityId: payment.id,
+          severity: AuditSeverity.MEDIUM,
+        },
+      );
     }
 
     return await this.paymentRepository.save(payment);
@@ -346,6 +381,27 @@ export class PaymentService {
       byStatus,
       dailyPayments,
     };
+  }
+
+  private async updateBookingPayment(bookingId: string, paymentAmount: number): Promise<void> {
+    const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    
+    if (!booking) {
+      return;
+    }
+
+    // Update paid amount
+    booking.paidAmount = (booking.paidAmount || 0) + paymentAmount;
+    booking.pendingAmount = booking.totalAmount - booking.paidAmount;
+
+    // Update booking status based on payment progress
+    if (booking.pendingAmount <= 0) {
+      booking.status = BookingStatus.COMPLETED;
+    } else if (booking.paidAmount >= booking.downPayment && booking.status === BookingStatus.PENDING) {
+      booking.status = BookingStatus.CONFIRMED;
+    }
+
+    await this.bookingRepository.save(booking);
   }
 
   private groupPaymentsByDay(payments: Payment[]): Array<{ date: string; count: number; amount: number }> {

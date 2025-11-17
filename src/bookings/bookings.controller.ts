@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Put, Delete, UseGuards, Query, Request } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Booking, BookingStatus } from '../bookings/booking.entity';
 import { Customer } from '../customers/customer.entity';
 import { Plot, PlotStatus } from '../plots/plot.entity';
@@ -29,6 +29,7 @@ export class BookingsController {
     private userRepository: Repository<User>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
+    private dataSource: DataSource,
     private paymentScheduleService: PaymentScheduleService,
     private enhancedPaymentScheduleService: EnhancedPaymentScheduleService,
     private paymentPlanService: PaymentPlanService,
@@ -340,17 +341,39 @@ export class BookingsController {
   }
 
   private async getBookingInstallmentsCount(bookingId: string): Promise<number> {
-    // This would need to be implemented with proper relations to installments table
-    return 0;
+    const { Installment } = await import('../finance/installment.entity');
+    const installmentRepo = this.dataSource.getRepository(Installment);
+    return await installmentRepo.count({ where: { bookingId } });
   }
 
   private async getBookingPaidInstallmentsCount(bookingId: string): Promise<number> {
-    // This would need to be implemented with proper relations to installments table
-    return 0;
+    const { Installment, InstallmentStatus } = await import('../finance/installment.entity');
+    const installmentRepo = this.dataSource.getRepository(Installment);
+    return await installmentRepo.count({ 
+      where: { 
+        bookingId,
+        status: InstallmentStatus.PAID,
+      } 
+    });
   }
 
   private async getNextPayment(bookingId: string): Promise<{ dueDate: Date; amount: number } | null> {
-    // This would need to be implemented with proper relations to installments table
+    const { Installment, InstallmentStatus } = await import('../finance/installment.entity');
+    const installmentRepo = this.dataSource.getRepository(Installment);
+    const nextInstallment = await installmentRepo.findOne({
+      where: {
+        bookingId,
+        status: InstallmentStatus.PENDING,
+      },
+      order: { dueDate: 'ASC' },
+    });
+
+    if (nextInstallment) {
+      return {
+        dueDate: nextInstallment.dueDate,
+        amount: nextInstallment.amount,
+      };
+    }
     return null;
   }
 } 

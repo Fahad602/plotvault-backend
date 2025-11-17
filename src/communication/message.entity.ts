@@ -73,16 +73,16 @@ export class Message {
   @Column({ type: 'text', nullable: true })
   metadata: string; // Additional data for the message (JSON string)
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ nullable: true })
   scheduledFor: Date; // When to send the message
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ nullable: true })
   sentAt: Date; // When the message was actually sent
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ nullable: true })
   deliveredAt: Date; // When the message was delivered
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ nullable: true })
   readAt: Date; // When the message was read
 
   @Column({ nullable: true })
@@ -112,7 +112,7 @@ export class Message {
   @Column({ default: 0 })
   retryCount: number; // Number of retry attempts
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ nullable: true })
   nextRetryAt: Date; // When to retry sending
 
   @CreateDateColumn()

@@ -25,15 +25,39 @@ import { TasksModule } from './tasks/tasks.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: process.env.NODE_ENV === 'development' ? '.env' : undefined,
+      envFilePath: process.env.NODE_ENV === 'development' 
+        ? ['.env.local', '.env']  // .env.local takes precedence if it exists
+        : undefined,
     }),
     TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
+      // Use SQLite for development, PostgreSQL for production
+      // In development, always use SQLite regardless of DATABASE_URL
+      // In production, use PostgreSQL if DATABASE_URL is set
+      type: process.env.NODE_ENV === 'development' 
+        ? 'sqlite'
+        : (process.env.DATABASE_URL && 
+           (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'))
+          ? 'postgres' 
+          : 'sqlite'),
+      ...(process.env.NODE_ENV === 'development'
+        ? {
+            // Development: Always use SQLite
+            database: 'queen-hills.db',
+          }
+        : (process.env.DATABASE_URL && 
+           (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'))
+          ? {
+              // Production: Use PostgreSQL
+              url: process.env.DATABASE_URL,
+              ssl: { rejectUnauthorized: false },
+            }
+          : {
+              // Fallback: SQLite
+              database: process.env.DATABASE_URL || 'queen-hills.db',
+            })),
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: process.env.NODE_ENV !== 'production',
+      synchronize: process.env.NODE_ENV === 'development', // Enable in development to auto-create tables, disable in production
       logging: process.env.NODE_ENV === 'development',
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
       migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
       migrationsRun: process.env.NODE_ENV === 'production',
     } as TypeOrmModuleOptions),

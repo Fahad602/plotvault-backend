@@ -4,28 +4,39 @@ export class AddSalesTeamFields1735690000000 implements MigrationInterface {
   name = 'AddSalesTeamFields1735690000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add new columns to users table
-    await queryRunner.query(`
-      ALTER TABLE "users" 
-      ADD COLUMN "assignedToUserId" varchar,
-      ADD COLUMN "department" varchar,
-      ADD COLUMN "employeeId" varchar,
-      ADD COLUMN "phone" varchar,
-      ADD COLUMN "address" varchar,
-      ADD COLUMN "workloadScore" integer NOT NULL DEFAULT 0
-    `);
+    // Add new columns to users table (only if table exists)
+    const usersTable = await queryRunner.getTable('users');
+    if (usersTable) {
+      // SQLite only supports adding one column at a time
+      const hasAssignedToUserId = usersTable.findColumnByName('assignedToUserId');
+      const hasDepartment = usersTable.findColumnByName('department');
+      const hasEmployeeId = usersTable.findColumnByName('employeeId');
+      const hasPhone = usersTable.findColumnByName('phone');
+      const hasAddress = usersTable.findColumnByName('address');
+      const hasWorkloadScore = usersTable.findColumnByName('workloadScore');
 
-    // Add foreign key constraint for assignedToUserId
-    await queryRunner.query(`
-      ALTER TABLE "users" 
-      ADD CONSTRAINT "FK_users_assignedToUserId" 
-      FOREIGN KEY ("assignedToUserId") REFERENCES "users"("id") ON DELETE SET NULL
-    `);
+      if (!hasAssignedToUserId) {
+        await queryRunner.query(`ALTER TABLE "users" ADD COLUMN "assignedToUserId" varchar`);
+      }
+      if (!hasDepartment) {
+        await queryRunner.query(`ALTER TABLE "users" ADD COLUMN "department" varchar`);
+      }
+      if (!hasEmployeeId) {
+        await queryRunner.query(`ALTER TABLE "users" ADD COLUMN "employeeId" varchar`);
+      }
+      if (!hasPhone) {
+        await queryRunner.query(`ALTER TABLE "users" ADD COLUMN "phone" varchar`);
+      }
+      if (!hasAddress) {
+        await queryRunner.query(`ALTER TABLE "users" ADD COLUMN "address" varchar`);
+      }
+      if (!hasWorkloadScore) {
+        await queryRunner.query(`ALTER TABLE "users" ADD COLUMN "workloadScore" integer NOT NULL DEFAULT 0`);
+      }
 
-    // Update UserRole enum to include SALES_MANAGER
-    await queryRunner.query(`
-      ALTER TYPE "user_role_enum" ADD VALUE 'sales_manager'
-    `);
+      // Note: SQLite doesn't support adding foreign key constraints via ALTER TABLE
+      // TypeORM will handle the relationship through entity decorators
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

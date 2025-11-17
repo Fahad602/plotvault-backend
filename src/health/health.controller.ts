@@ -11,15 +11,23 @@ export class HealthController {
       // Test database connection
       await this.dataSource.query('SELECT 1');
       
+      const dbType = this.dataSource.options.type;
+      const dbName = dbType === 'sqlite' 
+        ? (this.dataSource.options as any).database 
+        : (this.dataSource.options as any).database || 'postgres';
+      
       return {
         status: 'ok',
         timestamp: new Date().toISOString(),
         message: 'Queen Hills API is running',
         database: 'connected',
-        databaseType: this.dataSource.options.type,
+        databaseType: dbType,
+        databaseName: dbName,
+        isSQLite: dbType === 'sqlite',
+        isPostgreSQL: dbType === 'postgres',
         nodeEnv: process.env.NODE_ENV,
         hasDatabaseUrl: !!process.env.DATABASE_URL,
-        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 20) + '...',
+        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
       };
     } catch (error) {
       return {
@@ -28,9 +36,10 @@ export class HealthController {
         message: 'Database connection failed',
         database: 'disconnected',
         error: error.message,
+        databaseType: this.dataSource.options.type,
         nodeEnv: process.env.NODE_ENV,
         hasDatabaseUrl: !!process.env.DATABASE_URL,
-        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 20) + '...',
+        databaseUrlPrefix: process.env.DATABASE_URL?.substring(0, 30) + '...',
       };
     }
   }

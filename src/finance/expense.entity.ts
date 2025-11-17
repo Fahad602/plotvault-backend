@@ -1,16 +1,17 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { ConstructionProject } from './construction-project.entity';
 import { User } from '../users/user.entity';
 
 export enum ExpenseCategory {
-  MATERIALS = 'materials',
-  LABOR = 'labor',
-  EQUIPMENT = 'equipment',
-  PERMITS = 'permits',
-  INSPECTIONS = 'inspections',
-  UTILITIES = 'utilities',
-  TRANSPORTATION = 'transportation',
   ADMINISTRATIVE = 'administrative',
+  MAINTENANCE = 'maintenance',
+  UTILITIES = 'utilities',
+  SECURITY = 'security',
+  LANDSCAPING = 'landscaping',
+  CONSTRUCTION = 'construction',
+  LEGAL = 'legal',
+  MARKETING = 'marketing',
+  INSURANCE = 'insurance',
+  TAXES = 'taxes',
   OTHER = 'other',
 }
 
@@ -21,13 +22,10 @@ export enum ExpenseStatus {
   REJECTED = 'rejected',
 }
 
-@Entity('construction_expenses')
-export class ConstructionExpense {
+@Entity('expenses')
+export class Expense {
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
-  @Column()
-  projectId: string;
 
   @Column()
   expenseName: string;
@@ -38,18 +36,18 @@ export class ConstructionExpense {
   })
   category: ExpenseCategory;
 
+  @Column('decimal', { precision: 12, scale: 2 })
+  amount: number;
+
+  @Column('decimal', { precision: 12, scale: 2, default: 0 })
+  paidAmount: number;
+
   @Column({
     type: 'varchar',
     enum: ExpenseStatus,
     default: ExpenseStatus.PENDING,
   })
   status: ExpenseStatus;
-
-  @Column('decimal', { precision: 12, scale: 2 })
-  amount: number;
-
-  @Column('decimal', { precision: 12, scale: 2, default: 0 })
-  paidAmount: number;
 
   @Column({ type: 'date' })
   expenseDate: Date;
@@ -85,6 +83,9 @@ export class ConstructionExpense {
   referenceNumber: string;
 
   @Column({ nullable: true })
+  accountId: string; // Link to chart of accounts
+
+  @Column({ nullable: true })
   submittedBy: string;
 
   @Column({ nullable: true })
@@ -102,15 +103,12 @@ export class ConstructionExpense {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @ManyToOne(() => ConstructionProject)
-  @JoinColumn({ name: 'projectId' })
-  project: ConstructionProject;
-
-  @ManyToOne(() => User, user => user.submittedExpenses)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'submittedBy' })
   submittedByUser: User;
 
-  @ManyToOne(() => User, user => user.approvedExpenses)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'approvedBy' })
   approvedByUser: User;
 }
+

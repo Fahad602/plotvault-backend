@@ -4,12 +4,14 @@ import { User } from '../users/user.entity';
 import { Customer } from '../customers/customer.entity';
 import { Plot } from '../plots/plot.entity';
 import { PlotSizePricing } from '../plots/plot-size-pricing.entity';
+import { PlotOwnershipHistory } from '../plots/plot-ownership-history.entity';
 import { Booking } from '../bookings/booking.entity';
 import { Installment } from '../finance/installment.entity';
 import { PaymentSchedule } from '../finance/payment-schedule.entity';
 import { Payment } from '../finance/payment.entity';
 import { PaymentPlan } from '../finance/payment-plan.entity';
 import { PaymentProof } from '../finance/payment-proof.entity';
+import { Expense } from '../finance/expense.entity';
 import { Account, JournalEntry, JournalLine } from '../finance/entities';
 import { ActivityLog } from '../common/activity-log.entity';
 import { Document } from '../documents/document.entity';
@@ -38,12 +40,14 @@ export const AppDataSource = new DataSource({
     Customer, 
     Plot, 
     PlotSizePricing,
+    PlotOwnershipHistory,
     Booking, 
     Installment, 
     PaymentSchedule,
     Payment,
     PaymentPlan,
     PaymentProof,
+    Expense,
     Account,
     JournalEntry,
     JournalLine,

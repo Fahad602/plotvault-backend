@@ -47,6 +47,19 @@ export class Plot {
   @Column('decimal', { precision: 5, scale: 2, nullable: true })
   mapY: number;
 
+  // Image coordinate fields for overlay on plot map
+  @Column('text', { nullable: true })
+  imageBounds: string; // JSON string: {x, y, width, height} or polygon: [{x,y}, {x,y}, ...]
+
+  @Column({ nullable: true })
+  imagePath: string; // Path to the map image file (e.g., '/plot-map.png')
+
+  @Column('integer', { nullable: true })
+  imageWidth: number; // Original image width in pixels
+
+  @Column('integer', { nullable: true })
+  imageHeight: number; // Original image height in pixels
+
   @CreateDateColumn()
   createdAt: Date;
 
