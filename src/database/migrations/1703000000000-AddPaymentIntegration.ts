@@ -10,44 +10,52 @@ export class AddPaymentIntegration1703000000000 implements MigrationInterface {
     const timestampType = isPostgres ? 'timestamp' : 'datetime';
     const timestampDefault = isPostgres ? 'CURRENT_TIMESTAMP' : "(datetime('now'))";
 
-    // Create payment_plans table
-    await queryRunner.query(`
-      CREATE TABLE "payment_plans" (
-        "id" varchar PRIMARY KEY NOT NULL,
-        "name" varchar NOT NULL,
-        "description" varchar NOT NULL,
-        "plotSizeMarla" decimal(5,2) NOT NULL,
-        "plotPrice" decimal(12,2) NOT NULL,
-        "downPaymentAmount" decimal(12,2),
-        "downPaymentPercentage" decimal(5,2),
-        "monthlyPayment" decimal(12,2) NOT NULL,
-        "quarterlyPayment" decimal(12,2),
-        "biYearlyPayment" decimal(12,2),
-        "triannualPayment" decimal(12,2),
-        "tenureMonths" integer NOT NULL DEFAULT 24,
-        "status" varchar NOT NULL DEFAULT 'active',
-        "notes" text,
-        "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
-        "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
-      )
-    `);
+    // Check if payment_plans table exists before creating
+    const paymentPlansTable = await queryRunner.getTable('payment_plans');
+    if (!paymentPlansTable) {
+      // Create payment_plans table
+      await queryRunner.query(`
+        CREATE TABLE "payment_plans" (
+          "id" varchar PRIMARY KEY NOT NULL,
+          "name" varchar NOT NULL,
+          "description" varchar NOT NULL,
+          "plotSizeMarla" decimal(5,2) NOT NULL,
+          "plotPrice" decimal(12,2) NOT NULL,
+          "downPaymentAmount" decimal(12,2),
+          "downPaymentPercentage" decimal(5,2),
+          "monthlyPayment" decimal(12,2) NOT NULL,
+          "quarterlyPayment" decimal(12,2),
+          "biYearlyPayment" decimal(12,2),
+          "triannualPayment" decimal(12,2),
+          "tenureMonths" integer NOT NULL DEFAULT 24,
+          "status" varchar NOT NULL DEFAULT 'active',
+          "notes" text,
+          "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
+          "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
+        )
+      `);
+    }
 
-    // Create payment_proofs table
-    await queryRunner.query(`
-      CREATE TABLE "payment_proofs" (
-        "id" varchar PRIMARY KEY NOT NULL,
-        "paymentId" varchar NOT NULL,
-        "fileName" varchar NOT NULL,
-        "filePath" varchar NOT NULL,
-        "fileSize" integer NOT NULL,
-        "mimeType" varchar NOT NULL,
-        "proofType" varchar NOT NULL DEFAULT 'screenshot',
-        "description" text,
-        "uploadedBy" varchar,
-        "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
-        "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
-      )
-    `);
+    // Check if payment_proofs table exists before creating
+    const paymentProofsTable = await queryRunner.getTable('payment_proofs');
+    if (!paymentProofsTable) {
+      // Create payment_proofs table
+      await queryRunner.query(`
+        CREATE TABLE "payment_proofs" (
+          "id" varchar PRIMARY KEY NOT NULL,
+          "paymentId" varchar NOT NULL,
+          "fileName" varchar NOT NULL,
+          "filePath" varchar NOT NULL,
+          "fileSize" integer NOT NULL,
+          "mimeType" varchar NOT NULL,
+          "proofType" varchar NOT NULL DEFAULT 'screenshot',
+          "description" text,
+          "uploadedBy" varchar,
+          "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
+          "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault}
+        )
+      `);
+    }
 
     // Add new columns to bookings table (only if table exists)
     const bookingsTable = await queryRunner.getTable('bookings');
