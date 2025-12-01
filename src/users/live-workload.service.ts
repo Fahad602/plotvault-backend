@@ -50,7 +50,7 @@ export class LiveWorkloadService {
       this.leadRepository.count({
         where: { 
           assignedToUserId: agentId,
-          status: Not(In([LeadStatus.CONVERTED, LeadStatus.LOST, LeadStatus.NOT_INTERESTED]))
+          status: Not(In([LeadStatus.CLOSE_WON, LeadStatus.NOT_INTERESTED]))
         }
       }),
       // Total leads
@@ -61,14 +61,14 @@ export class LiveWorkloadService {
       this.leadRepository.count({
         where: { 
           assignedToUserId: agentId,
-          status: LeadStatus.CONVERTED
+          status: LeadStatus.CLOSE_WON
         }
       }),
       // Lost leads
       this.leadRepository.count({
         where: { 
           assignedToUserId: agentId,
-          status: LeadStatus.LOST
+          status: LeadStatus.NOT_INTERESTED
         }
       }),
       // Not interested leads

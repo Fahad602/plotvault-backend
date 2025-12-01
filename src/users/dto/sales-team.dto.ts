@@ -1,4 +1,4 @@
-import { IsEmail, IsString, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { IsEmail, IsString, IsOptional, IsNumber, Min, Max, IsBoolean } from 'class-validator';
 
 export class CreateTeamMemberDto {
   @IsString()
@@ -57,6 +57,10 @@ export class UpdateTeamMemberDto {
   @Min(0)
   @Max(100)
   workloadScore?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class AssignLeadDto {

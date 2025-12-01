@@ -5,6 +5,7 @@ import { User, UserRole } from './user.entity';
 import { Lead, LeadStatus } from '../leads/lead.entity';
 import { Booking, BookingStatus } from '../bookings/booking.entity';
 import { SalesActivity } from './sales-activity.entity';
+import { LeadActivityLog } from '../leads/lead-activity-log.entity';
 import { CreateTeamMemberDto, UpdateTeamMemberDto, AssignLeadDto } from './dto/sales-team.dto';
 import { LiveWorkloadService } from './live-workload.service';
 import * as bcrypt from 'bcrypt';
@@ -20,6 +21,8 @@ export class SalesTeamService {
     private bookingRepository: Repository<Booking>,
     @InjectRepository(SalesActivity)
     private salesActivityRepository: Repository<SalesActivity>,
+    @InjectRepository(LeadActivityLog)
+    private leadActivityLogRepository: Repository<LeadActivityLog>,
     private liveWorkloadService: LiveWorkloadService,
   ) {}
 
@@ -27,18 +30,20 @@ export class SalesTeamService {
    * Get all team members managed by a sales manager
    */
   async getTeamMembers(managerId: string): Promise<any[]> {
-    // Get team members without workload score
+    // Get team members (including inactive ones)
     const teamMembers = await this.userRepository.find({
       where: { 
         assignedToUserId: managerId,
-        role: UserRole.SALES_PERSON,
-        isActive: true
+        role: UserRole.SALES_PERSON
       },
       select: [
         'id', 'fullName', 'email', 'phone', 'department', 
         'employeeId', 'createdAt', 'isActive'
       ],
-      order: { fullName: 'ASC' }
+      order: {
+        isActive: 'DESC', // Active members first
+        fullName: 'ASC'
+      }
     });
 
     // Get live workload data for each team member
@@ -141,16 +146,16 @@ export class SalesTeamService {
       // Total leads
       this.leadRepository.count({ where: { assignedToUserId: memberId } }),
       // Converted leads
-      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.CONVERTED } }),
+      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.CLOSE_WON } }),
       // Active leads (excluding converted, lost, not_interested)
       this.leadRepository.count({ 
         where: { 
           assignedToUserId: memberId,
-          status: Not(In([LeadStatus.CONVERTED, LeadStatus.LOST, LeadStatus.NOT_INTERESTED]))
+          status: Not(In([LeadStatus.CLOSE_WON, LeadStatus.NOT_INTERESTED]))
         }
       }),
       // Lost leads
-      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.LOST } }),
+      this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.NOT_INTERESTED } }),
       // Not interested leads
       this.leadRepository.count({ where: { assignedToUserId: memberId, status: LeadStatus.NOT_INTERESTED } }),
       // Total bookings
@@ -362,7 +367,7 @@ export class SalesTeamService {
       teamMembers.map(async (member) => {
         const [leadsCount, convertedLeads, bookingsCount, totalSales, activitiesCount] = await Promise.all([
           this.leadRepository.count({ where: { assignedToUserId: member.id } }),
-          this.leadRepository.count({ where: { assignedToUserId: member.id, status: LeadStatus.CONVERTED } }),
+          this.leadRepository.count({ where: { assignedToUserId: member.id, status: LeadStatus.CLOSE_WON } }),
           this.bookingRepository.count({ where: { createdById: member.id } }),
           this.bookingRepository
             .createQueryBuilder('booking')
@@ -462,7 +467,7 @@ export class SalesTeamService {
       this.leadRepository.count({
         where: { 
           assignedToUserId: In(teamMemberIds),
-          status: LeadStatus.CONVERTED 
+          status: LeadStatus.CLOSE_WON 
         }
       }),
       // Total customers created by team members
@@ -502,6 +507,71 @@ export class SalesTeamService {
 
     const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
 
+    // Get recent activities from lead_activity_log
+    const recentActivities = await this.leadActivityLogRepository
+      .createQueryBuilder('activity')
+      .leftJoinAndSelect('activity.user', 'user')
+      .leftJoinAndSelect('activity.lead', 'lead')
+      .where('activity.userId IN (:...teamMemberIds)', { teamMemberIds })
+      .orderBy('activity.createdAt', 'DESC')
+      .take(20)
+      .getMany();
+
+    const formattedActivities = recentActivities.map(activity => {
+      const leadName = activity.lead?.fullName || activity.lead?.leadId || 'Unknown Lead';
+      const userName = activity.user?.fullName || 'Unknown User';
+      
+      // Format description based on activity type
+      let formattedDescription = activity.description;
+      if (activity.metadata) {
+        try {
+          const metadata = JSON.parse(activity.metadata);
+          
+          switch (activity.activityType) {
+            case 'communication_added':
+              formattedDescription = `${userName} communicated with ${leadName} - ${metadata.communicationType || 'Communication'}`;
+              if (metadata.outcome) {
+                formattedDescription += ` (Outcome: ${metadata.outcome})`;
+              }
+              break;
+            case 'note_added':
+              formattedDescription = `${userName} added a note for ${leadName}: "${metadata.noteTitle || 'Note'}"`;
+              break;
+            case 'status_changed':
+              formattedDescription = `${userName} changed status for ${leadName} from "${metadata.oldStatus || 'Unknown'}" to "${metadata.newStatus || 'Unknown'}"`;
+              break;
+            case 'assigned':
+            case 'reassigned':
+              formattedDescription = `${userName} ${activity.activityType === 'assigned' ? 'assigned' : 'reassigned'} ${leadName}`;
+              break;
+            case 'created':
+              formattedDescription = `${userName} created lead: ${leadName}`;
+              break;
+            case 'converted':
+              formattedDescription = `${userName} converted ${leadName} to customer`;
+              break;
+            default:
+              formattedDescription = `${userName}: ${activity.description}`;
+          }
+        } catch (e) {
+          formattedDescription = `${userName}: ${activity.description}`;
+        }
+      } else {
+        formattedDescription = `${userName}: ${activity.description}`;
+      }
+
+      return {
+        id: activity.id,
+        type: activity.activityType,
+        description: formattedDescription,
+        userName: userName,
+        leadName: leadName,
+        leadId: activity.leadId,
+        createdAt: activity.createdAt,
+        timestamp: activity.createdAt,
+      };
+    });
+
     return {
       totalLeads,
       convertedLeads,
@@ -513,6 +583,7 @@ export class SalesTeamService {
       emailsSent: parseInt(activitiesStats.emailsSent) || 0,
       meetingsScheduled: parseInt(activitiesStats.meetingsScheduled) || 0,
       conversionRate: Math.round(conversionRate * 10) / 10,
+      recentActivities: formattedActivities,
     };
   }
 
@@ -537,7 +608,7 @@ export class SalesTeamService {
       this.leadRepository.count({
         where: { 
           assignedToUserId: agentId,
-          status: LeadStatus.CONVERTED 
+          status: LeadStatus.CLOSE_WON 
         }
       }),
       // Total customers created by this agent

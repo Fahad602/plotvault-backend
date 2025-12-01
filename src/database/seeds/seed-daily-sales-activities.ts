@@ -97,7 +97,7 @@ export async function seedDailySalesActivities(dataSource: DataSource) {
       }
 
       // Add some conversion activities for converted leads
-      const convertedLeads = agentLeads.filter(lead => lead.status === LeadStatus.CONVERTED);
+      const convertedLeads = agentLeads.filter(lead => lead.status === LeadStatus.CLOSE_WON);
       if (convertedLeads.length > 0 && Math.random() < 0.3) { // 30% chance
         const randomConvertedLead = convertedLeads[Math.floor(Math.random() * convertedLeads.length)];
         
@@ -151,7 +151,7 @@ export async function seedDailySalesActivities(dataSource: DataSource) {
   for (const agent of salesAgents) {
     const agentActivities = activities.filter(activity => activity.userId === agent.id);
     const agentLeads = leads.filter(lead => lead.assignedToUserId === agent.id);
-    const convertedLeads = agentLeads.filter(lead => lead.status === LeadStatus.CONVERTED);
+    const convertedLeads = agentLeads.filter(lead => lead.status === LeadStatus.CLOSE_WON);
     
     const conversionRate = agentLeads.length > 0 ? (convertedLeads.length / agentLeads.length) * 100 : 0;
     const avgActivitiesPerDay = agentActivities.length / 30;

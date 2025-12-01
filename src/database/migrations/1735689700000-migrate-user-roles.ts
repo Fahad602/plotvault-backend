@@ -69,15 +69,15 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
             // Step 4: Verify all roles are valid before schema change
             const invalidRoles = await queryRunner.query(`
                 SELECT DISTINCT "role" FROM "users" 
-                WHERE "role" NOT IN ('admin', 'sales_person', 'accountant', 'investor', 'buyer', 'auditor')
+                WHERE "role" NOT IN ('admin', 'sales_manager', 'sales_person', 'accountant')
             `);
             
             if (invalidRoles.length > 0) {
                 console.log('Found invalid roles:', invalidRoles.map(r => r.role));
-                // Update any other invalid roles to buyer (default)
+                // Update any other invalid roles to sales_person (default)
                 await queryRunner.query(`
-                    UPDATE "users" SET "role" = 'buyer' 
-                    WHERE "role" NOT IN ('admin', 'sales_person', 'accountant', 'investor', 'buyer', 'auditor')
+                    UPDATE "users" SET "role" = 'sales_person' 
+                    WHERE "role" NOT IN ('admin', 'sales_manager', 'sales_person', 'accountant')
                 `);
             }
         }
@@ -126,7 +126,7 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
                         "email" varchar NOT NULL,
                         "passwordHash" varchar NOT NULL,
                         "fullName" varchar NOT NULL,
-                        "role" varchar CHECK( "role" IN ('admin','sales_person','accountant','investor','buyer','auditor') ) NOT NULL DEFAULT ('buyer'),
+                        "role" varchar CHECK( "role" IN ('admin','sales_manager','sales_person','accountant') ) NOT NULL DEFAULT ('sales_person'),
                         "isActive" boolean NOT NULL DEFAULT ${isActiveDefault},
                         "createdAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
                         "updatedAt" ${timestampType} NOT NULL DEFAULT ${timestampDefault},
@@ -174,7 +174,7 @@ export class MigrateUserRoles1735689700000 implements MigrationInterface {
                         await queryRunner.query(`
                             ALTER TABLE "users" 
                             ADD CONSTRAINT "CHK_users_role" 
-                            CHECK ("role" IN ('admin','sales_person','accountant','investor','buyer','auditor'))
+                            CHECK ("role" IN ('admin','sales_manager','sales_person','accountant'))
                         `);
                     } catch (error) {
                         // Constraint might already exist with different name, ignore

@@ -16,13 +16,12 @@ export enum LeadSource {
 
 export enum LeadStatus {
   NEW = 'new',
-  CONTACTED = 'contacted',
-  QUALIFIED = 'qualified',
-  INTERESTED = 'interested',
   NOT_INTERESTED = 'not_interested',
-  FOLLOW_UP = 'follow_up',
-  CONVERTED = 'converted',
-  LOST = 'lost'
+  INTERESTED = 'interested',
+  WILL_VISIT = 'will_visit',
+  FUTURE = 'future',
+  CLOSE_WON = 'close_won',
+  IN_PROCESS = 'in_process',
 }
 
 export enum LeadPriority {
@@ -36,6 +35,9 @@ export enum LeadPriority {
 export class Lead {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ unique: true, nullable: true })
+  leadId: string; // Unique identifier (from CSV or auto-generated)
 
   @Column()
   fullName: string;
@@ -61,6 +63,12 @@ export class Lead {
     default: LeadStatus.NEW,
   })
   status: LeadStatus;
+
+  @Column({ nullable: true })
+  statusId: string; // Reference to lead_statuses table
+
+  @Column({ type: 'date', nullable: true })
+  dueDate: Date; // Due date for follow-up (not editable by sales person)
 
   @Column({
     type: 'varchar',

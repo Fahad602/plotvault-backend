@@ -6,7 +6,7 @@ import { Lead, LeadStatus } from '../leads/lead.entity';
 import { Customer } from '../customers/customer.entity';
 import { Booking, BookingStatus } from '../bookings/booking.entity';
 import { Payment, PaymentStatus } from '../finance/payment.entity';
-import { SalesActivity } from '../users/sales-activity.entity';
+import { LeadActivityLog } from '../leads/lead-activity-log.entity';
 
 @Injectable()
 export class SalesManagerDashboardService {
@@ -21,8 +21,8 @@ export class SalesManagerDashboardService {
     private bookingRepository: Repository<Booking>,
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
-    @InjectRepository(SalesActivity)
-    private salesActivityRepository: Repository<SalesActivity>,
+    @InjectRepository(LeadActivityLog)
+    private leadActivityLogRepository: Repository<LeadActivityLog>,
   ) {}
 
   /**
@@ -145,14 +145,14 @@ export class SalesManagerDashboardService {
     const qualifiedLeads = await this.leadRepository.count({
       where: { 
         assignedToUserId: In(teamMemberIds),
-        status: LeadStatus.QUALIFIED
+        status: LeadStatus.INTERESTED
       }
     });
 
     const convertedLeads = await this.leadRepository.count({
       where: { 
         assignedToUserId: In(teamMemberIds),
-        status: LeadStatus.CONVERTED
+        status: LeadStatus.CLOSE_WON
       }
     });
 
@@ -376,23 +376,70 @@ export class SalesManagerDashboardService {
       return [];
     }
 
-    const recentActivities = await this.salesActivityRepository
+    const recentActivities = await this.leadActivityLogRepository
       .createQueryBuilder('activity')
       .leftJoinAndSelect('activity.user', 'user')
+      .leftJoinAndSelect('activity.lead', 'lead')
       .where('activity.userId IN (:...teamMemberIds)', { teamMemberIds })
       .orderBy('activity.createdAt', 'DESC')
-      .take(10)
+      .take(20)
       .getMany();
 
-    return recentActivities.map(activity => ({
-      id: activity.id,
-      type: activity.activityType,
-      description: activity.description,
-      userName: activity.user.fullName,
-      createdAt: activity.createdAt,
-      isSuccessful: activity.isSuccessful,
-      potentialValue: activity.potentialValue
-    }));
+    return recentActivities.map(activity => {
+      const leadName = activity.lead?.fullName || activity.lead?.leadId || 'Unknown Lead';
+      const userName = activity.user?.fullName || 'Unknown User';
+      
+      // Format description based on activity type
+      let formattedDescription = activity.description;
+      if (activity.metadata) {
+        try {
+          const metadata = JSON.parse(activity.metadata);
+          
+          switch (activity.activityType) {
+            case 'communication_added':
+              formattedDescription = `${userName} communicated with ${leadName} - ${metadata.communicationType || 'Communication'}`;
+              if (metadata.outcome) {
+                formattedDescription += ` (Outcome: ${metadata.outcome})`;
+              }
+              break;
+            case 'note_added':
+              formattedDescription = `${userName} added a note for ${leadName}: "${metadata.noteTitle || 'Note'}"`;
+              break;
+            case 'status_changed':
+              formattedDescription = `${userName} changed status for ${leadName} from "${metadata.oldStatus || 'Unknown'}" to "${metadata.newStatus || 'Unknown'}"`;
+              break;
+            case 'assigned':
+            case 'reassigned':
+              formattedDescription = `${userName} ${activity.activityType === 'assigned' ? 'assigned' : 'reassigned'} ${leadName}`;
+              break;
+            case 'created':
+              formattedDescription = `${userName} created lead: ${leadName}`;
+              break;
+            case 'converted':
+              formattedDescription = `${userName} converted ${leadName} to customer`;
+              break;
+            default:
+              formattedDescription = `${userName}: ${activity.description}`;
+          }
+        } catch (e) {
+          // If metadata parsing fails, use default description
+          formattedDescription = `${userName}: ${activity.description}`;
+        }
+      } else {
+        formattedDescription = `${userName}: ${activity.description}`;
+      }
+
+      return {
+        id: activity.id,
+        type: activity.activityType,
+        description: formattedDescription,
+        userName: userName,
+        leadName: leadName,
+        leadId: activity.leadId,
+        createdAt: activity.createdAt,
+        timestamp: activity.createdAt,
+      };
+    });
   }
 
   /**
@@ -417,7 +464,7 @@ export class SalesManagerDashboardService {
         const convertedLeads = await this.leadRepository.count({
           where: { 
             assignedToUserId: member.id,
-            status: LeadStatus.CONVERTED
+            status: LeadStatus.CLOSE_WON
           }
         });
 

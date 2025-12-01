@@ -23,7 +23,7 @@ export class WorkloadUpdateService {
       const leadCount = await this.leadRepository.count({
         where: { 
           assignedToUserId: agentId,
-          status: Not(In([LeadStatus.CONVERTED, LeadStatus.LOST, LeadStatus.NOT_INTERESTED]))
+          status: Not(In([LeadStatus.CLOSE_WON, LeadStatus.NOT_INTERESTED]))
         }
       });
 

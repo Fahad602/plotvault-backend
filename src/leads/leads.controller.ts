@@ -15,11 +15,14 @@ import {
 } from '@nestjs/common';
 import { LeadsService, CreateLeadDto, UpdateLeadDto, CreateCommunicationDto, CreateNoteDto, LeadFilters } from './leads.service';
 import { LeadWorkflowService } from './lead-workflow.service';
+import { LeadActivityService } from './lead-activity.service';
+import { CrmNotificationService } from './crm-notification.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { Permission } from '../auth/permissions.guard';
 import { LeadStatus, LeadSource, LeadPriority } from './lead.entity';
+import { ForbiddenException } from '@nestjs/common';
 
 @Controller('leads')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -27,6 +30,8 @@ export class LeadsController {
   constructor(
     private readonly leadsService: LeadsService,
     private readonly leadWorkflowService: LeadWorkflowService,
+    private readonly activityService: LeadActivityService,
+    private readonly notificationService: CrmNotificationService,
   ) {}
 
   @Post()
@@ -37,7 +42,7 @@ export class LeadsController {
       createLeadDto.assignedToUserId = req.user.userId;
     }
     
-    return await this.leadsService.createLead(createLeadDto);
+    return await this.leadsService.createLead(createLeadDto, req.user);
   }
 
   @Get()
@@ -134,6 +139,50 @@ export class LeadsController {
     return await this.leadsService.getAllLeads(filters, page, limit, sortBy, sortOrder);
   }
 
+  // Lead statuses endpoints (must come before :id routes)
+  @Get('statuses')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async getLeadStatuses() {
+    return await this.leadsService.getLeadStatuses();
+  }
+
+  @Get('status-metrics')
+  @RequirePermissions(Permission.VIEW_LEAD_ANALYTICS)
+  async getLeadStatusMetrics(
+    @Request() req,
+    @Query('assignedToUserId') assignedToUserId?: string,
+  ) {
+    const filters: LeadFilters = {
+      assignedToUserId,
+    };
+    return await this.leadsService.getLeadStatusMetrics(filters, {
+      userId: req.user.userId,
+      role: req.user.role,
+    });
+  }
+
+  // Notification endpoints (must come before :id routes)
+  @Get('notifications')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async getNotifications(
+    @Request() req,
+    @Query('unreadOnly') unreadOnly?: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number = 50,
+  ) {
+    return await this.notificationService.getUserNotifications(
+      req.user.userId,
+      unreadOnly === 'true',
+      limit,
+    );
+  }
+
+  @Get('notifications/unread-count')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async getUnreadCount(@Request() req) {
+    const count = await this.notificationService.getUnreadCount(req.user.userId);
+    return { count };
+  }
+
   @Get(':id')
   @RequirePermissions(Permission.VIEW_LEADS)
   async getLeadById(@Param('id', ParseUUIDPipe) id: string) {
@@ -145,14 +194,29 @@ export class LeadsController {
   async updateLead(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateLeadDto: UpdateLeadDto,
+    @Request() req,
   ) {
-    return await this.leadsService.updateLead(id, updateLeadDto);
+    // Sales person cannot change assignment or due date
+    if (req.user.role === 'sales_person') {
+      if (updateLeadDto.assignedToUserId !== undefined) {
+        throw new ForbiddenException('Sales person cannot change lead assignment');
+      }
+      if (updateLeadDto.dueDate !== undefined) {
+        throw new ForbiddenException('Sales person cannot change due date');
+      }
+    }
+
+    return await this.leadsService.updateLead(id, updateLeadDto, req.user);
   }
 
   @Delete(':id')
   @RequirePermissions(Permission.DELETE_LEADS)
-  async deleteLead(@Param('id', ParseUUIDPipe) id: string) {
-    await this.leadsService.deleteLead(id);
+  async deleteLead(@Param('id', ParseUUIDPipe) id: string, @Request() req) {
+    // Sales person cannot delete leads
+    if (req.user.role === 'sales_person') {
+      throw new ForbiddenException('Sales person cannot delete leads');
+    }
+    await this.leadsService.deleteLead(id, req.user);
     return { message: 'Lead deleted successfully' };
   }
 
@@ -178,7 +242,7 @@ export class LeadsController {
       ...createCommunicationDto,
       leadId,
       userId: req.user.userId,
-    });
+    }, req.user);
   }
 
   @Get(':id/communications')
@@ -199,7 +263,7 @@ export class LeadsController {
       ...createNoteDto,
       leadId,
       userId: req.user.userId,
-    });
+    }, req.user);
   }
 
   @Get(':id/notes')
@@ -224,5 +288,46 @@ export class LeadsController {
   @RequirePermissions(Permission.VIEW_LEAD_ANALYTICS)
   async getWorkflowStats(@Request() req) {
     return await this.leadWorkflowService.getWorkflowStats();
+  }
+
+  // Activity timeline endpoints
+  @Get(':id/activities')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async getLeadActivities(@Param('id', ParseUUIDPipe) leadId: string) {
+    return await this.activityService.getLeadActivities(leadId);
+  }
+
+  @Get('users/:userId/activities')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async getUserActivities(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number = 50,
+  ) {
+    return await this.activityService.getUserActivities(userId, limit);
+  }
+
+  @Put('notifications/:id/read')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async markNotificationAsRead(@Param('id', ParseUUIDPipe) id: string) {
+    await this.notificationService.markAsRead(id);
+    return { message: 'Notification marked as read' };
+  }
+
+  @Put('notifications/read-all')
+  @RequirePermissions(Permission.VIEW_LEADS)
+  async markAllNotificationsAsRead(@Request() req) {
+    await this.notificationService.markAllAsRead(req.user.userId);
+    return { message: 'All notifications marked as read' };
+  }
+
+  // Update lead status
+  @Put(':id/status')
+  @RequirePermissions(Permission.EDIT_LEADS)
+  async updateLeadStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { statusId: string },
+    @Request() req,
+  ) {
+    return await this.leadsService.updateLeadStatus(id, body.statusId, req.user);
   }
 }

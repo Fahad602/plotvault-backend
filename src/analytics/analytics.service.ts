@@ -367,7 +367,7 @@ export class AnalyticsService {
   private async getConversionRate(): Promise<number> {
     const [totalLeads, convertedLeads] = await Promise.all([
       this.leadRepository.count(),
-      this.leadRepository.count({ where: { status: LeadStatus.CONVERTED } })
+      this.leadRepository.count({ where: { status: LeadStatus.CLOSE_WON } })
     ]);
     
     return totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;

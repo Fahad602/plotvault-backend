@@ -29,42 +29,42 @@ export class LeadWorkflowService {
   private readonly workflowRules: WorkflowRule[] = [
     {
       fromStatus: LeadStatus.NEW,
-      toStatus: LeadStatus.CONTACTED,
+      toStatus: LeadStatus.IN_PROCESS,
       condition: 'contact_attempted',
       daysDelay: 1,
       action: 'notification'
     },
     {
-      fromStatus: LeadStatus.CONTACTED,
-      toStatus: LeadStatus.QUALIFIED,
+      fromStatus: LeadStatus.IN_PROCESS,
+      toStatus: LeadStatus.INTERESTED,
       condition: 'qualification_completed',
       daysDelay: 3,
       action: 'notification'
     },
     {
-      fromStatus: LeadStatus.QUALIFIED,
-      toStatus: LeadStatus.INTERESTED,
+      fromStatus: LeadStatus.INTERESTED,
+      toStatus: LeadStatus.WILL_VISIT,
       condition: 'interest_expressed',
       daysDelay: 2,
       action: 'notification'
     },
     {
-      fromStatus: LeadStatus.INTERESTED,
-      toStatus: LeadStatus.CONVERTED,
+      fromStatus: LeadStatus.WILL_VISIT,
+      toStatus: LeadStatus.CLOSE_WON,
       condition: 'booking_created',
       daysDelay: 0,
       action: 'auto'
     },
     {
       fromStatus: LeadStatus.NEW,
-      toStatus: LeadStatus.LOST,
+      toStatus: LeadStatus.NOT_INTERESTED,
       condition: 'no_contact_90_days',
       daysDelay: 90,
       action: 'notification'
     },
     {
-      fromStatus: LeadStatus.CONTACTED,
-      toStatus: LeadStatus.LOST,
+      fromStatus: LeadStatus.IN_PROCESS,
+      toStatus: LeadStatus.NOT_INTERESTED,
       condition: 'no_follow_up_30_days',
       daysDelay: 30,
       action: 'notification'
@@ -101,7 +101,7 @@ export class LeadWorkflowService {
 
     for (const lead of interestedLeads) {
       if (lead.convertedToCustomerId) {
-        await this.updateLeadStatus(lead.id, LeadStatus.CONVERTED, 'Booking created - auto-converted');
+        await this.updateLeadStatus(lead.id, LeadStatus.CLOSE_WON, 'Booking created - auto-converted');
         console.log(`✅ Auto-converted lead: ${lead.fullName}`);
       }
     }
@@ -147,7 +147,7 @@ export class LeadWorkflowService {
     const overdueFollowUps = await this.leadRepository.find({
       where: {
         nextFollowUpAt: LessThan(now),
-        status: LeadStatus.CONTACTED
+        status: LeadStatus.IN_PROCESS
       },
       relations: ['assignedToUser']
     });
@@ -174,7 +174,7 @@ export class LeadWorkflowService {
     const overdueLeads = await this.leadRepository.find({
       where: {
         nextFollowUpAt: LessThan(now),
-        status: LeadStatus.CONTACTED
+        status: LeadStatus.IN_PROCESS
       }
     });
 
@@ -276,10 +276,10 @@ export class LeadWorkflowService {
       workflowStats.totalLeads += parseInt(stat.count);
       workflowStats.byStatus[stat.status] = parseInt(stat.count);
       
-      if (stat.status === LeadStatus.CONVERTED) {
+      if (stat.status === LeadStatus.CLOSE_WON) {
         workflowStats.conversions = parseInt(stat.count);
       }
-      if (stat.status === LeadStatus.LOST) {
+      if (stat.status === LeadStatus.NOT_INTERESTED) {
         workflowStats.lost = parseInt(stat.count);
       }
     });

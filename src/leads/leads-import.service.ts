@@ -131,8 +131,23 @@ export class LeadsImportService {
             }
           }
 
+          // Extract leadId from CSV if available (from sourceDetails)
+          let leadId: string | undefined;
+          try {
+            const sourceDetailsObj = JSON.parse(parsedLead.sourceDetails || '{}');
+            if (sourceDetailsObj.leadId) {
+              leadId = sourceDetailsObj.leadId;
+            }
+          } catch (e) {
+            // If sourceDetails is not JSON, try to extract from row directly
+            if (row.id || row.leadId || row.lead_id) {
+              leadId = row.id || row.leadId || row.lead_id;
+            }
+          }
+
           // Create lead
           const lead = this.leadRepository.create({
+            leadId, // Use leadId from CSV if available
             fullName: parsedLead.fullName.trim(),
             email: parsedLead.email ? parsedLead.email.trim().toLowerCase() : null,
             phone: parsedLead.phone ? parsedLead.phone.trim() : null,

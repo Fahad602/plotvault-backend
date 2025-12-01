@@ -56,7 +56,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'ahmed.khan@email.com',
       phone: '+92-300-1234567',
       source: LeadSource.WHATSAPP,
-      status: LeadStatus.CONVERTED,
+      status: LeadStatus.CLOSE_WON,
       priority: LeadPriority.HIGH,
       assignedAgent: salesAgents[0], // Ali Hassan
       notes: 'Interested in 5 marla plot, budget 25-30 lakhs',
@@ -68,7 +68,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'fatima.ali@email.com',
       phone: '+92-301-2345678',
       source: LeadSource.FACEBOOK_ADS,
-      status: LeadStatus.CONVERTED,
+      status: LeadStatus.CLOSE_WON,
       priority: LeadPriority.MEDIUM,
       assignedAgent: salesAgents[0], // Ali Hassan
       notes: 'Looking for investment opportunity, prefers commercial plots',
@@ -80,7 +80,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'muhammad.hassan@email.com',
       phone: '+92-302-3456789',
       source: LeadSource.REFERRAL,
-      status: LeadStatus.QUALIFIED,
+      status: LeadStatus.INTERESTED,
       priority: LeadPriority.HIGH,
       assignedAgent: salesAgents[0], // Ali Hassan
       notes: 'Very interested, wants to visit site this week',
@@ -91,7 +91,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'ayesha.malik@email.com',
       phone: '+92-303-4567890',
       source: LeadSource.WEBSITE,
-      status: LeadStatus.CONTACTED,
+      status: LeadStatus.IN_PROCESS,
       priority: LeadPriority.MEDIUM,
       assignedAgent: salesAgents[0], // Ali Hassan
       notes: 'Initial contact made, scheduled follow-up call',
@@ -104,7 +104,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'usman.sheikh@email.com',
       phone: '+92-304-5678901',
       source: LeadSource.GOOGLE_ADS,
-      status: LeadStatus.CONVERTED,
+      status: LeadStatus.CLOSE_WON,
       priority: LeadPriority.MEDIUM,
       assignedAgent: salesAgents[1], // Sara Ahmed
       notes: 'Booked 3 marla plot, payment completed',
@@ -140,7 +140,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'nadia.ahmed@email.com',
       phone: '+92-307-8901234',
       source: LeadSource.WALK_IN,
-      status: LeadStatus.CONVERTED,
+      status: LeadStatus.CLOSE_WON,
       priority: LeadPriority.MEDIUM,
       assignedAgent: salesAgents[2], // Omar Khan
       notes: 'Walk-in customer, booked immediately',
@@ -163,7 +163,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'saima.khan@email.com',
       phone: '+92-309-0123456',
       source: LeadSource.WEBSITE,
-      status: LeadStatus.FOLLOW_UP,
+      status: LeadStatus.WILL_VISIT,
       priority: LeadPriority.MEDIUM,
       assignedAgent: salesAgents[2], // Omar Khan
       notes: 'Needs follow-up call next week',
@@ -176,7 +176,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'bilal.ahmed@email.com',
       phone: '+92-310-1234567',
       source: LeadSource.REFERRAL,
-      status: LeadStatus.CONVERTED,
+      status: LeadStatus.CLOSE_WON,
       priority: LeadPriority.HIGH,
       assignedAgent: salesAgents[3], // Ahmed Saleem
       notes: 'Referred by existing customer, high priority',
@@ -188,7 +188,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'maryam.sheikh@email.com',
       phone: '+92-311-2345678',
       source: LeadSource.FACEBOOK_ADS,
-      status: LeadStatus.QUALIFIED,
+      status: LeadStatus.INTERESTED,
       priority: LeadPriority.MEDIUM,
       assignedAgent: salesAgents[3], // Ahmed Saleem
       notes: 'Qualified lead, waiting for site visit',
@@ -199,7 +199,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       email: 'tariq.malik@email.com',
       phone: '+92-312-3456789',
       source: LeadSource.WHATSAPP,
-      status: LeadStatus.LOST,
+      status: LeadStatus.NOT_INTERESTED,
       priority: LeadPriority.LOW,
       assignedAgent: salesAgents[3], // Ahmed Saleem
       notes: 'Lost to competitor, price was main factor',
@@ -229,7 +229,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
   console.log(`✅ Created ${createdLeads.length} leads`);
 
   // Create customers and bookings for converted leads
-  const convertedLeads = createdLeads.filter(lead => lead.status === LeadStatus.CONVERTED);
+  const convertedLeads = createdLeads.filter(lead => lead.status === LeadStatus.CLOSE_WON);
   
   for (const lead of convertedLeads) {
     // Create customer
@@ -343,7 +343,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       createdAt: new Date(lead.createdAt.getTime() + 2 * 60 * 60 * 1000) // 2 hours later
     });
 
-    if (lead.status === LeadStatus.QUALIFIED || lead.status === LeadStatus.CONVERTED) {
+    if (lead.status === LeadStatus.INTERESTED || lead.status === LeadStatus.CLOSE_WON) {
       // Qualification activity
       await salesActivityRepository.save({
         userId: lead.assignedAgent.id,
@@ -355,7 +355,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
       });
     }
 
-    if (lead.status === LeadStatus.CONVERTED) {
+    if (lead.status === LeadStatus.CLOSE_WON) {
       // Conversion activity
       await salesActivityRepository.save({
         userId: lead.assignedAgent.id,
@@ -374,7 +374,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
   for (let i = 0; i < salesAgents.length; i++) {
     const agent = salesAgents[i];
     const agentLeads = createdLeads.filter(lead => lead.assignedAgent.id === agent.id);
-    const convertedLeads = agentLeads.filter(lead => lead.status === LeadStatus.CONVERTED);
+    const convertedLeads = agentLeads.filter(lead => lead.status === LeadStatus.CLOSE_WON);
     
     // Calculate workload score (lower is better)
     const conversionRate = agentLeads.length > 0 ? (convertedLeads.length / agentLeads.length) * 100 : 0;
@@ -397,7 +397,7 @@ export async function seedRealisticCRMData(dataSource: DataSource) {
   // Performance summary by agent
   for (const agent of salesAgents) {
     const agentLeads = createdLeads.filter(lead => lead.assignedAgent.id === agent.id);
-    const agentConverted = agentLeads.filter(lead => lead.status === LeadStatus.CONVERTED);
+    const agentConverted = agentLeads.filter(lead => lead.status === LeadStatus.CLOSE_WON);
     const conversionRate = agentLeads.length > 0 ? (agentConverted.length / agentLeads.length) * 100 : 0;
     
     console.log(`   - ${agent.fullName}: ${agentConverted.length}/${agentLeads.length} (${conversionRate.toFixed(1)}%)`);
