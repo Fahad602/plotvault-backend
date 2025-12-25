@@ -142,6 +142,9 @@ export class BookingsController {
 
   @Post()
   async createBooking(@Body() createBookingDto: any) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/c7c25835-cb2a-4279-8c31-ce35bd5734cb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookings.controller.ts:144',message:'createBooking entry',data:{createBookingDto,downPayment:createBookingDto.downPayment,paidAmount:createBookingDto.paidAmount,totalAmount:createBookingDto.totalAmount,paymentType:createBookingDto.paymentType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     console.log('=== BOOKING CREATION REQUEST ===');
     console.log('Request body:', createBookingDto);
     
@@ -154,6 +157,9 @@ export class BookingsController {
       where: { id: createBookingDto.plotId }
     });
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/c7c25835-cb2a-4279-8c31-ce35bd5734cb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookings.controller.ts:157',message:'After customer/plot lookup',data:{customerFound:!!customer,plotFound:!!plot,plotStatus:plot?.status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     console.log('Customer found:', customer ? 'Yes' : 'No', customer?.id);
     console.log('Plot found:', plot ? 'Yes' : 'No', plot?.id, plot?.status);
 
@@ -173,6 +179,9 @@ export class BookingsController {
     }
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/c7c25835-cb2a-4279-8c31-ce35bd5734cb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookings.controller.ts:175',message:'Before booking creation',data:{downPayment:createBookingDto.downPayment,paidAmount:createBookingDto.paidAmount,paymentType:createBookingDto.paymentType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       const booking = this.bookingRepository.create({
         ...createBookingDto,
         bookingNumber: this.generateBookingNumber(),
@@ -181,9 +190,15 @@ export class BookingsController {
         pendingAmount: createBookingDto.totalAmount - (createBookingDto.paidAmount || 0),
       });
 
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/c7c25835-cb2a-4279-8c31-ce35bd5734cb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookings.controller.ts:184',message:'Booking object created',data:{booking:JSON.stringify(booking)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       console.log('Booking object created:', booking);
 
       const savedBooking = await this.bookingRepository.save(booking) as unknown as Booking;
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/c7c25835-cb2a-4279-8c31-ce35bd5734cb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookings.controller.ts:187',message:'Booking saved',data:{bookingId:savedBooking.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       console.log('Booking saved successfully:', savedBooking.id);
 
       // Update plot status to reserved
@@ -259,6 +274,9 @@ export class BookingsController {
       
       return result;
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/c7c25835-cb2a-4279-8c31-ce35bd5734cb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bookings.controller.ts:261',message:'Booking creation error',data:{errorMessage:error.message,errorStack:error.stack,errorName:error.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       console.error('=== BOOKING CREATION ERROR ===');
       console.error('Error details:', error);
       console.error('Error message:', error.message);
